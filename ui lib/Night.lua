@@ -1,3 +1,15 @@
+--[[
+    Night UI Library
+    Modified to be a callable library.
+    
+    Description: This library provides a comprehensive set of UI components and functions 
+    for creating graphical user interfaces in a Roblox environment. It includes features for 
+    managing windows, notifications, tabs, modules, and various UI elements, with a focus 
+    on customization and extensibility.
+]]
+
+local NightLib = {}
+
 local Assets = {
     Functions = {},
     Config = {},
@@ -11,7 +23,48 @@ local Assets = {
     Main = {ToggleVisibility = nil}
 }
 
-local Night = getgenv().Night
+-- Store the original getgenv if it exists, otherwise provide a fallback.
+local _getgenv = getgenv or function() return {} end
+local Night = _getgenv().Night or {
+    Dev = false,
+    Mobile = false,
+    Config = {
+        UI = {
+            Scale = 1,
+            Position = {X = 0.5, Y = 0.5},
+            Size = {X = 0.5, Y = 0.5},
+            ArrayList = false,
+            FullScreen = false,
+            TabColor = {value1 = 40, value2 = 40, value3 = 40},
+            TabTransparency = 0.07,
+            KeybindColor = {value1 = 0, value2 = 0, value3 = 0},
+            KeybindTransparency = 0.7,
+            Notifications = true,
+            Anim = true,
+            ToggleKeyCode = "LeftAlt"
+        },
+        Game = {
+            Modules = {},
+            Keybinds = {},
+            Sliders = {},
+            TextBoxes = {},
+            MiniToggles = {},
+            Dropdowns = {},
+            ToggleLists = {},
+            ModuleKeybinds = {},
+            Other = {}
+        }
+    },
+    Connections = {},
+    Corners = {},
+    Notifications = { Active = {}, Objects = {} },
+    ArrayList = { Objects = {} },
+    Tabs = { Tabs = {} }
+}
+
+-- Assign to the library's internal state
+NightLib.State = Night
+
 Assets.Functions.cloneref = cloneref or function(ref: Instance) return ref end
 
 local PlayersSV = Assets.Functions.cloneref(game:GetService("Players")) :: Players
@@ -37,8 +90,10 @@ do
         return str
     end
     Assets.Functions.GetGameInfo = function()
-        local gameinfo = game:HttpGet("https://games.roblox.com/v1/games?universeIds="..tostring(game.GameId))
-        if gameinfo then
+        local success, gameinfo = pcall(function()
+            return game:HttpGet("https://games.roblox.com/v1/games?universeIds="..tostring(game.GameId))
+        end)
+        if success and gameinfo then
             local dencgameinfo = HttpService:JSONDecode(gameinfo)
             if dencgameinfo and dencgameinfo.data and dencgameinfo.data[1] then
                 return dencgameinfo.data[1]                
@@ -49,18 +104,18 @@ do
             return "no game info returned"
         end
     end
---    Assets.Functions.LoadFile = function(file : string, githublink : string)
-        if Night.Dev and isfile(file) then
+    Assets.Functions.LoadFile = function(file : string, githublink : string)
+        if Night.Dev and isfile and isfile(file) then
             return loadstring(readfile(file))()
         else
-            local suc, err = pcall(function() 
-                file = http.request({
+            local suc, result = pcall(function() 
+                return http.request({
                     Url = githublink,
                     Method = "GET"
-                }).Body
+                })
             end)
-            if suc and not err and file and not tostring(file):lower():find("404: not found") then
-                return loadstring(file)()
+            if suc and result and result.Body and not tostring(result.Body):lower():find("404: not found") then
+                return loadstring(result.Body)()
             end
         end
         return "error"
@@ -164,11 +219,13 @@ end
 
 do
     Assets.Config.Save = function(File, data)
-        writefile("Night/Config/"..File..".json", HttpService:JSONEncode(data))
+        if writefile then
+            writefile("Night/Config/"..File..".json", HttpService:JSONEncode(data))
+        end
     end
     
---    Assets.Config.Load = function(File, set)
-        if isfile("Night/Config/"..File..".json") then
+    Assets.Config.Load = function(File, set)
+        if isfile and isfile("Night/Config/"..File..".json") then
             local data = readfile("Night/Config/"..File..".json")
             local data2 = HttpService:JSONDecode(data)
             if set then
@@ -257,9 +314,10 @@ do
         style: string?,
     }
 
-    Assets.Font.Download = function(Name: string, Font: string)
-        local data = game:HttpGet(Font)
-        if not isfile("Night/Assets/Fonts/"..Name..".ttf") then
+    Assets.Font.Download = function(Name: string, FontUrl: string)
+        if not (isfile and writefile) then return false end
+        local success, data = pcall(function() return game:HttpGet(FontUrl) end)
+        if success and not isfile("Night/Assets/Fonts/"..Name..".ttf") then
             if data and not tostring(data):find("404") then
                 writefile("Night/Assets/Fonts/"..Name..".ttf", data)
             else
@@ -271,6 +329,7 @@ do
 
     local family_cache = {}
     Assets.Font.create_family = function(name: string, faces: { FontFace })
+        if not (writefile and getcustomasset) then return nil end
         local family = { name = name, faces = {} }
 
         for i, face in next, faces do
@@ -294,7 +353,6 @@ do
 
     Assets.Font.get_family = function(name: string)
         local id = assert(family_cache[name], `Family {name} not found!`)
-
         return id
     end
 end
@@ -459,9 +517,11 @@ do
         local start = os.clock()
         task.spawn(function()
             repeat 
-                TimeLineBar.Size = UDim2.new((os.clock() - start) / Night.Notifications.Active[flag].Duration, 0, 0, 2)
+                if Night and Night.Notifications and Night.Notifications.Active and Night.Notifications.Active[flag] then
+                    TimeLineBar.Size = UDim2.new((os.clock() - start) / Night.Notifications.Active[flag].Duration, 0, 0, 2)
+                end
                 task.wait()
-            until Night and Night.Notifications and Night.Notifications.Active[flag] and (os.clock() - start) >= Night.Notifications.Active[flag].Duration or Night and Night.Notifications and Night.Notifications.Active and not Night.Notifications.Active[flag] or not Night or not Night.Notifications
+            until not (Night and Night.Notifications and Night.Notifications.Active and Night.Notifications.Active[flag] and (os.clock() - start) < Night.Notifications.Active[flag].Duration)
             if Night and Night.Notifications and Night.Notifications.Active and Night.Notifications.Active[flag] then
                 NotificationData.Functions.Remove(true)
             end
@@ -484,6 +544,7 @@ do
         }
     
         Night.Notifications.Objects.NotificationGui = Instance.new("ScreenGui", Assets.Functions.gethui())
+        Night.Notifications.Objects.NotificationGui.Name = "NightNotificationGui"
         Night.Notifications.Objects.NotificationGui.ResetOnSpawn = false
         Night.Notifications.Objects.NotificationGui.IgnoreGuiInset = true
         Night.Notifications.Objects.NotificationGui.DisplayOrder = 10000
@@ -492,14 +553,13 @@ do
         end
 
         Night.ArrayList.Objects.ArrayGui = Instance.new("ScreenGui", Assets.Functions.gethui())
+        Night.ArrayList.Objects.ArrayGui.Name = "NightArrayGui"
         Night.ArrayList.Objects.ArrayGui.ResetOnSpawn = false
         Night.ArrayList.Objects.ArrayGui.DisplayOrder = 10000
-        Night.ArrayList.Objects.ArrayGui.Enabled = false
-        if Night.Config.UI.ArrayList == nil then
-            Night.Config.UI.ArrayList = false
-        end
+        Night.ArrayList.Objects.ArrayGui.Enabled = Night.Config.UI.ArrayList
     
         InitInfo.Objects.MainScreenGui = Instance.new("ScreenGui", Assets.Functions.gethui())
+        InitInfo.Objects.MainScreenGui.Name = "NightMainGui"
         InitInfo.Objects.MainScreenGui.ResetOnSpawn = false
         InitInfo.Objects.MainScreenGui.IgnoreGuiInset = true
         InitInfo.Objects.MainScreenGui.DisplayOrder = 10000
@@ -973,7 +1033,6 @@ do
         end
     
         InitInfo.Functions.Drag = function(mouseStart: Vector2 | Vector3 | nil, frameStart: UDim2, input: InputObject?)
-            -- lowww taper fadeee
             pcall(function()
                 if UserCamera then
                     local Viewport = UserCamera.ViewportSize
@@ -1190,17 +1249,19 @@ do
         
         local download = Assets.Font.Download("Product-Sans-Regular", "https://github.com/null-wtf/Night/raw/refs/heads/main/Night/Assets/Fonts/Product-Sans-Regular.ttf")
         if not download then
-            return 
+            -- Fallback font if download fails
+            font = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+        else
+            local product_sans_id = Assets.Font.create_family("ProductSans", {
+                {
+                    name = "Regular",
+                    weight = 400,
+                    file = "Night/Assets/Fonts/Product-Sans-Regular.ttf",
+                },
+            })
+            font = Font.new(product_sans_id)
         end
-
-        local product_sans_id = Assets.Font.create_family("ProductSans", {
-            {
-                name = "Regular",
-                weight = 400,
-                file = "Night/Assets/Fonts/Product-Sans-Regular.ttf",
-            },
-        })
-        local font = Font.new(product_sans_id)
+        
 
         type EntryInstance = Frame & {
             Line: Frame,
@@ -3382,7 +3443,7 @@ do
                 SliderValue2.BackgroundTransparency = 1
                 SliderValue2.Size = UDim2.new(0.043, 0, 0, 15)
                 SliderValue2.FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular)
-                SliderValue2.Text = tonumber(SliderData.Default.Value2)
+                SliderValue2.Text = tostring(SliderData.Default.Value2)
                 SliderValue2.TextColor3 = Color3.fromRGB(255, 255, 255)
                 SliderValue2.TextSize = 13
                 SliderValue2.TextTransparency = 0.2
@@ -3414,7 +3475,7 @@ do
                 Circle2.ImageTransparency = 1
                 Instance.new("UICorner", Circle2).CornerRadius = UDim.new(0, 15)
 
-                SliderData.Functions.SetValue = function(value: number, save: boolean, target: number)
+                SliderData.Functions.SetValue = function(value: any, save: boolean, target: number)
 
                     if value then
                         local info = {Value1 = SliderData.Default.Value1, Value2 = value}
@@ -3487,7 +3548,7 @@ do
                     SliderValue1.BackgroundTransparency = 1
                     SliderValue1.Size = UDim2.new(0.044, 0, 0, 15)
                     SliderValue1.FontFace = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular)
-                    SliderValue1.Text = tonumber(SliderData.Default.Value1)
+                    SliderValue1.Text = tostring(SliderData.Default.Value1)
                     SliderValue1.TextColor3 = Color3.fromRGB(255, 255, 255)
                     SliderValue1.TextSize = 13
                     SliderValue1.TextTransparency = 0.2
@@ -4591,10 +4652,16 @@ do
     Assets.Main.Uninject = function()
         Assets.Main.OnUninject:Fire(true)
 
-        Night.Background.Objects.MainScreenGui:Destroy()
-        Night.Notifications.Objects.NotificationGui:Destroy()
-        Night.ArrayList.Objects.ArrayGui:Destroy()
-
+        if Night.Background and Night.Background.Objects.MainScreenGui and Night.Background.Objects.MainScreenGui.Parent then
+            Night.Background.Objects.MainScreenGui:Destroy()
+        end
+        if Night.Notifications and Night.Notifications.Objects.NotificationGui and Night.Notifications.Objects.NotificationGui.Parent then
+            Night.Notifications.Objects.NotificationGui:Destroy()
+        end
+        if Night.ArrayList and Night.ArrayList.Objects.ArrayGui and Night.ArrayList.Objects.ArrayGui.Parent then
+            Night.ArrayList.Objects.ArrayGui:Destroy()
+        end
+        
         if Night.Mobile then
             for i,v in Night.Background.MobileButtons.Buttons do
                 if v and v.Functions and v.Functions.Destroy then
@@ -4620,12 +4687,11 @@ do
         end
         
         Assets.Main.OnUninject:Destroy()
-        table.clear(getgenv().Night)
-        getgenv().Night = nil
+        table.clear(Night)
     end
 
     local cantogglewithkeybind = true
-    Assets.Main.Load = function(file)
+    Assets.Main.Load = function()
         if not Night.Background then
             Night.Background = Assets.MainBackground.Init()
         end
@@ -4636,13 +4702,7 @@ do
                 Icon = "rbxassetid://11295288868",
                 Default = true
             })
-            Assets.Dashboard.NewTab({
-                Name = "Premium",
-                Icon = "rbxassetid://102351199755031",
-                TabInfo = "Powerful modules kept premium",
-                Dashboard = Night.Dashboard
-            })
-
+            
             local Settings = Assets.Pages.NewPage({
                 Name = "Settings",
                 Icon = "rbxassetid://11293977610",
@@ -4783,13 +4843,8 @@ do
                 end
             end})
 
-
---            Assets.Functions.LoadFile("Night/Games/"..file..".lua", "https://raw.githubusercontent.com/null-wtf/Night/refs/heads/main/Night/Games/"..file..".lua")
---            Assets.Config.Load(file, "Game")
             return {Background = Night.Background, Dashboard = Night.Dashboard, Settings = Settings}
         else
---            Assets.Functions.LoadFile("Night/Games/"..file..".lua", "https://raw.githubusercontent.com/null-wtf/Night/refs/heads/main/Night/Games/"..file..".lua")
---            Assets.Config.Load(Night.GameSave, "Game")
             return {Background = Night.Background, Dashboard = Night.Dashboard}
         end
     end
@@ -4914,5 +4969,14 @@ do
 
 end
 
-Night.Assets = Assets
-return Assets
+NightLib.Assets = Assets
+
+-- Expose the library's functions and objects.
+NightLib.Load = Assets.Main.Load
+NightLib.Unload = Assets.Main.Uninject
+NightLib.ToggleVisibility = Assets.Main.ToggleVisibility
+NightLib.NewTab = Assets.Dashboard.NewTab
+NightLib.NewPage = Assets.Pages.NewPage
+NightLib.SendNotification = Assets.Notifications.Send
+
+return NightLib
