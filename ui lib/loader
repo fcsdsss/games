@@ -1,5 +1,5 @@
 --[[
-    Night UI Library - 使用示例
+    Night UI Library - 使用示例 (已修正)
     这个脚本展示了如何调用您修改后的 Night UI 库。
 
     功能点:
@@ -12,7 +12,6 @@
 ]]
 
 -- 1. 从您提供的 URL 加载 Night UI 库
--- loadstring(...)() 会执行返回的 Lua 代码，并返回该库的主表 (NightLib)
 local NightLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/ui%20lib/Night.lua"))()
 
 -- 检查库是否加载成功
@@ -22,20 +21,18 @@ if not NightLib then
 end
 
 -- 2. 初始化UI
--- Load() 函数会创建主窗口、仪表板(Dashboard)、设置页面等基础UI元素
--- 它返回一个包含已创建对象的表
+-- Load() 函数会创建主窗口、仪表板(Dashboard)等基础UI元素
+-- 【重要】它返回一个包含已创建核心对象的表，我们需要从中获取 Dashboard
 local LoadedUI = NightLib.Load()
-print("NightLib UI 已加载并初始化。")
-
--- 3. 获取核心UI对象
--- 我们需要仪表板页面来添加我们的新标签页
-local Dashboard = NightLib.Assets.Pages.Dashboard
-
--- 检查 Dashboard 是否存在
-if not Dashboard then
-    warn("无法找到 Dashboard 页面！")
+if not (LoadedUI and LoadedUI.Dashboard) then
+    warn("UI 加载失败或未能返回 Dashboard！")
     return
 end
+
+print("NightLib UI 已加载并初始化。")
+
+-- 3. 【修正点】从 Load() 的返回值中获取 Dashboard 对象
+local Dashboard = LoadedUI.Dashboard
 
 -- 4. 创建一个新的标签页
 -- NewTab 会在 Dashboard 上创建一个可点击的分类
