@@ -2,7 +2,7 @@
     Obsidian (LinoriaLib) & Infernium Feature Integration
     - Combat features (Hitbox, Anti-Ragdoll, Auto-Parry) by voltrivax
     - UI framework (Obsidian/LinoriaLib) by deivid & mstudio45
-    - Integrated, translated, and cleaned by Gemini
+    - Integrated, translated, and cleaned by Gemini (v2.1 - UI Load Fix)
 ]]
 
 -- Game Services and Core Variables
@@ -37,7 +37,7 @@ Library.ShowToggleFrameInKeybinds = true
 -- Create the main window
 local Window = Library:CreateWindow({
 	Title = "Obsidian (Integrated)",
-	Footer = "Version: 2.0",
+	Footer = "Version: 2.1",
 	Icon = 95816097006870,
 	NotifySide = "Right",
 	ShowCustomCursor = true,
@@ -222,7 +222,7 @@ end
 -- ## UI Creation & Logic Binding ##
 
 -- A clean Main tab for future additions
-Tabs.Main:AddLabel({Text = "Welcome to Obsidian (Integrated)!\nCombat features are in the 'Combat' tab."})
+Tabs.Main:AddLabel({Text = "Welcome to Obsidian (Integrated)!\nCombat features are in the 'Combat' tab.", DoesWrap = true})
 
 -- ## Anti-Ragdoll ##
 local PlayerGroup = Tabs.Combat:AddLeftGroupbox("Player", "user-cog")
@@ -448,7 +448,16 @@ MenuGroup:AddDropdown("DPIDropdown", {
 })
 MenuGroup:AddDivider()
 MenuGroup:AddLabel("Menu Bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Toggle Menu" })
-MenuGroup:AddButton("Unload", function() Library:Unload() end, {Risky = true})
+
+-- CORRECTED BUTTON CALL
+MenuGroup:AddButton({
+    Text = "Unload",
+    Func = function()
+        Library:Unload()
+    end,
+    Risky = true
+})
+
 Library.ToggleKeybind = Options.MenuKeybind
 
 -- Addons Setup
@@ -459,5 +468,5 @@ SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 ThemeManager:SetFolder("Obsidian_Integrated")
 SaveManager:SetFolder("Obsidian_Integrated/GameConfigs")
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
-ThemeManager:ApplyToTab(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UISettings"])
 SaveManager:LoadAutoloadConfig()
