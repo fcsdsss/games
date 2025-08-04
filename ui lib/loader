@@ -1,140 +1,62 @@
---[[
-    Night UI Library - 使用示例 (已修正)
-    这个脚本展示了如何调用您修改后的 Night UI 库。
+-- ===================================================================
+--      第一步：加载 Night UI 库
+--      这行代码会自动下载并运行 Night UI 的最新版本。
+-- ===================================================================
 
-    功能点:
-    1. 从 URL 加载并初始化 Night UI 库。
-    2. 创建一个新的标签页 (Tab)。
-    3. 在新标签页中添加一个模块 (Module)。
-    4. 为模块添加回调函数，在启用/禁用时触发。
-    5. 为模块添加一个“迷你开关”(MiniToggle) 设置项。
-    6. 按下键盘上的 "P" 键可以显示或隐藏整个UI界面。
-]]
+loadstring(game:HttpGet("https://raw.githubusercontent.com/null-wtf/Night/refs/heads/main/Night/Loader.luau"))()
 
--- 1. 从您提供的 URL 加载 Night UI 库
-local NightLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/ui%20lib/Night.lua"))()
+-- ===================================================================
+--      第二步：等待 UI 库完全加载
+--      这是为了确保后续的功能代码可以正常运行。
+-- ===================================================================
 
--- 检查库是否加载成功
-if not NightLib then
-    warn("NightLib 加载失败！请检查 URL 或网络连接。")
+repeat task.wait() until getgenv().Night and getgenv().Night.Loaded
+
+-- ===================================================================
+--      第三步：执行针对 Blade Ball 的功能代码
+-- ===================================================================
+
+-- 检查当前游戏是否是 Blade Ball，如果不是则脚本不执行
+if game.PlaceId ~= 873703865 then
+    getgenv().Night.Assets.Functions.Notify("This script is for Blade Ball only!", 5, "GameError")
     return
 end
 
--- 2. 初始化UI
--- Load() 函数会创建主窗口、仪表板(Dashboard)等基础UI元素
--- 【重要】它返回一个包含已创建核心对象的表，我们需要从中获取 Dashboard
-local LoadedUI = NightLib.Load()
-if not (LoadedUI and LoadedUI.Dashboard) then
-    warn("UI 加载失败或未能返回 Dashboard！")
-    return
-end
+-- 获取 Night 的核心变量
+local Night = getgenv().Night
+local Functions = Night.Assets.Functions
+local Tabs = Night.Tabs.Tabs
 
-print("NightLib UI 已加载并初始化。")
+-- 获取游戏服务和本地玩家
+local plrs = game:GetService("Players")
+local lplr = plrs.LocalPlayer
+local originalJumpPower -- 用于保存原始跳跃力
 
--- 3. 【修正点】从 Load() 的返回值中获取 Dashboard 对象
-local Dashboard = LoadedUI.Dashboard
-
--- 4. 创建一个新的标签页
--- NewTab 会在 Dashboard 上创建一个可点击的分类
-local MyTab = NightLib.NewTab({
-    Name = "我的工具",
-    Icon = "rbxassetid://135395971960120", -- 这是一个图标资产ID示例，可以替换
-    TabInfo = "这里是一些自定义的工具",
-    Dashboard = Dashboard -- 指定此标签页属于哪个仪表板
-})
-print("新的标签页 '我的工具' 已创建。")
-
--- 5. 在新标签页中创建一个模块
--- 模块是具体功能的载体
-local MyModule = MyTab.Functions.NewModule({
-    Name = "飞行",
-    Description = "一个简单的飞行功能模块",
-    Icon = "rbxassetid://11295287158", -- 飞行图标示例
-    Flag = "MyFlyModule", -- 唯一的标识符，用于保存配置
-    Default = false, -- 默认是否开启
-    
-    -- 核心回调函数：当模块被切换（开启/关闭）时执行
+-- 在 "Player" 标签页下创建一个名为 "Infinite Jump" 的新模块
+Tabs.Player.Functions.NewModule({
+    Name = 'Infinite Jump',
+    Description = 'Sets your jump power to a high value.',
+    Icon = 'rbxassetid://283442822', -- 一个跳跃图标
+    Flag = 'BladeBall_InfJump', -- 为脚本设置一个唯一的标识符
     Callback = function(self, enabled)
-        -- 'self' 指向 ModuleData 表自身
-        -- 'enabled' 是一个布尔值 (true/false)
+        -- 等待玩家角色加载完成
+        local character = lplr.Character or lplr.CharacterAdded:Wait()
+        local humanoid = character:WaitForChild("Humanoid")
+
         if enabled then
-            print("飞行模块已开启！")
-            NightLib.SendNotification({ Description = "飞行已启用" })
-            
-            -- 在这里添加飞行的具体逻辑
-            -- 例如： game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 100
-            
-            -- 检查设置项的状态
-            local isSuperFlyEnabled = self.Settings.SuperFlyToggle.Enabled
-            if isSuperFlyEnabled then
-                print("超级飞行模式已激活！")
-            end
-            
+            -- 当开关打开时
+            originalJumpPower = humanoid.JumpPower -- 保存原始的跳跃力
+            humanoid.JumpPower = 150 -- 设置一个新的、更高的跳跃力
+            Functions.Notify('Infinite Jump: Enabled', 3, "InfJumpStatus")
         else
-            print("飞行模块已关闭。")
-            NightLib.SendNotification({ Description = "飞行已禁用", Duration = 3 })
-            
-            -- 在这里添加关闭飞行的逻辑
-            -- 例如： game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 16
-        end
-    end
-})
-print("新的模块 '飞行' 已创建。")
-
--- 6. 为模块添加设置项 (Settings)
--- 这是一个 "迷你开关" 示例
-local SuperFlyToggle = MyModule.Functions.Settings.MiniToggle({
-    Name = "超级飞行",
-    Description = "启用后，飞行速度加倍",
-    Flag = "SuperFlyToggle", -- 设置项的唯一标识符
-    Default = false, -- 默认值
-    -- 当开关状态改变时触发的回调
-    Callback = function(self, enabled)
-        print("超级飞行设置已" .. (enabled and "开启" or "关闭"))
-        
-        -- 如果主模块（飞行）当前是开启的，我们可以在这里立即应用效果
-        if MyModule.Data.Enabled then
-            print("飞行效果已更新。")
+            -- 当开关关闭时
+            if originalJumpPower then
+                humanoid.JumpPower = originalJumpPower -- 恢复原始的跳跃力
+            end
+            Functions.Notify('Infinite Jump: Disabled', 3, "InfJumpStatus")
         end
     end
 })
 
--- 7. 添加一个按钮设置项
-local ResetButton = MyModule.Functions.Settings.Button({
-    Name = "重置速度",
-    Description = "点击以恢复默认行走速度",
-    Flag = "ResetSpeedButton",
-    ToolTip = "无论飞行模块是否开启，都会重置速度",
-    Callback = function(self)
-        print("速度已被重置！")
-        if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-            game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 16
-        end
-        NightLib.SendNotification({ Description = "速度已重置为默认值" })
-    end
-})
-
-
--- 8. 添加一个用于切换UI可见性的键盘事件
--- 我们使用 "P" 键作为示例
-local uiToggleKey = Enum.KeyCode.P
-
-game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-    -- 如果正在输入文本框，则不触发
-    if gameProcessed then return end
-
-    if input.KeyCode == uiToggleKey then
-        -- ToggleVisibility 函数需要一个布尔值 (true 来显示, false 来隐藏)
-        -- 我们通过检查当前主窗口的可见性来决定传入 true 还是 false
-        local isVisible = NightLib.Assets.MainBackground.Objects.MainFrame.Visible
-        NightLib.ToggleVisibility(not isVisible)
-        print("UI 可见性已切换。")
-    end
-end)
-
--- 初始提示
-wait(1)
-NightLib.SendNotification({
-    Description = "NightLib 加载成功！请按 P 键打开/关闭菜单。",
-    Duration = 8
-})
+-- 最后，弹出一个通知，告诉用户脚本已成功加载
+Functions.Notify('Blade Ball script loaded!', 5, "ScriptLoaded")
