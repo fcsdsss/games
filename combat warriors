@@ -1,10 +1,17 @@
+--[[
+    Obsidian (LinoriaLib) & Infernium Feature Integration
+    - Combat features (Hitbox, Anti-Ragdoll, Auto-Parry) by voltrivax
+    - UI framework (Obsidian/LinoriaLib) by deivid & mstudio45
+    - Integrated, translated, and cleaned by Gemini
+]]
+
+-- Game Services and Core Variables
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
@@ -12,8 +19,10 @@ local hrp = char:WaitForChild("HumanoidRootPart")
 local hum = char:FindFirstChildWhichIsA("Humanoid")
 local mouse = player:GetMouse()
 
+-- Wait for the folder containing player characters
 local charsFolder = Workspace:WaitForChild("PlayerCharacters", 20)
 
+-- Load Obsidian Library
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
@@ -25,34 +34,42 @@ local Toggles = Library.Toggles
 Library.ForceCheckbox = false
 Library.ShowToggleFrameInKeybinds = true
 
+-- Create the main window
 local Window = Library:CreateWindow({
-	Title = "mspaint (整合版)",
-	Footer = "version: integrated",
+	Title = "Obsidian (Integrated)",
+	Footer = "Version: 2.0",
 	Icon = 95816097006870,
 	NotifySide = "Right",
 	ShowCustomCursor = true,
 })
 
+-- UI Tabs
 local Tabs = {
-	Main = Window:AddTab("Main", "user"),
-    Combat = Window:AddTab("Combat", "swords"),
-	Key = Window:AddKeyTab("Key System"),
+	Main = Window:AddTab("Main", "home"),
+    Combat = Window:AddTab("Combat", "swords"), -- Combat features tab
 	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
 
 
+-- ###################################################################################
+-- #
+-- #                         COMBAT FEATURES (Ported from Infernium)
+-- #
+-- ###################################################################################
+
+-- Feature-specific variables
 local combatVars = {
     HitboxEnabled = false,
     HitboxSize = 4,
-    HitboxT = 0.7,
-    HitboxColor = Color3.fromRGB(255,0,0),
+    HitboxTransparency = 0.7,
+    HitboxColor = Color3.fromRGB(255, 0, 0),
 
     ParryEnabled = false,
     ParryEquip = false,
-    ParryDebug = false,
     ParryKey = Enum.KeyCode.F,
 
-    SawGarbage = false,
+    isAntiRagdollEnabled = false,
+    hasScannedGC = false,
 }
 
 local parrySettings = {
@@ -61,11 +78,13 @@ local parrySettings = {
     Chance = 100,
 }
 
+-- In-memory game objects (for Anti-Ragdoll, etc.)
 local gameGc = {
     OldRagdoll = nil,
     RagdollTable = nil,
 }
 
+-- Connection management
 local conns = {
     ParryCheck = nil,
     CharactersAdded = nil,
@@ -74,87 +93,93 @@ local conns = {
 
 local parryTargets = {}
 
-local function seeGarbage()
-    if combatVars.SawGarbage then return end
-    combatVars.SawGarbage = true
+-- ## Helper Functions ##
+
+-- Scans game memory to find specific functions for hooking
+local function scanGarbageCollector()
+    if combatVars.hasScannedGC then return end
+    combatVars.hasScannedGC = true
     for _, v in ipairs(getgc(true)) do
         if typeof(v) == "table" then
             if rawget(v, "toggleRagdoll") then
                 gameGc.OldRagdoll = v.toggleRagdoll
                 gameGc.RagdollTable = v
-                print("Ragdoll function found.")
+                print("Ragdoll function found and stored.")
             end
         end
     end
 end
 
+-- Simulates a key press event
 local function keyPress(key)
     VirtualInputManager:SendKeyEvent(true, key, false, game)
     task.wait()
     VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
-local function ResizeHitbox(oChar, size, transparency, color)
-    local head = oChar:FindFirstChild("Head")
+-- Hitbox modification function
+local function resizeHitbox(otherChar, size, transparency, color)
+    local head = otherChar:FindFirstChild("Head")
     if not head then return end
 
-    head.Size = size
-    head.Transparency = 1
-    head.CanCollide = false
-    head.Massless = true
-
+    -- The visual hitbox part
     local showHitboxPart = head:FindFirstChild("__ShowHitboxPart")
     if not showHitboxPart then
         showHitboxPart = Instance.new("Part")
         showHitboxPart.Name = "__ShowHitboxPart"
         showHitboxPart.Material = Enum.Material.Neon
-        showHitboxPart.Anchored = true -- 防止物理影响
-        showHitboxPart.CanCollide = false
-        showHitboxPart.Massless = true
+        showHitboxPart.Anchored = true
         showHitboxPart.Parent = head
 
-        local weld = Instance.new("WeldConstraint") -- 使用 WeldConstraint 更稳定
+        -- Use a WeldConstraint for a stable connection
+        local weld = Instance.new("WeldConstraint")
         weld.Part0 = head
         weld.Part1 = showHitboxPart
         weld.Parent = showHitboxPart
     end
 
+    -- Apply visual properties
     showHitboxPart.Size = size
     showHitboxPart.Color = color
     showHitboxPart.Transparency = combatVars.HitboxEnabled and transparency or 1
+    
+    -- Ensure collision is ALWAYS disabled for the hitbox part
+    showHitboxPart.CanCollide = false
+    showHitboxPart.CanTouch = false
 end
 
-local function changeAllHitboxes()
-    local size = combatVars.HitboxEnabled and Vector3.new(combatVars.HitboxSize, combatVars.HitboxSize, combatVars.HitboxSize) or Vector3.new(2,1,1)
-    local transparency = combatVars.HitboxT
+-- Applies hitbox changes to all players
+local function applyHitboxToAll()
+    local size = combatVars.HitboxEnabled and Vector3.new(combatVars.HitboxSize, combatVars.HitboxSize, combatVars.HitboxSize) or Vector3.new(2, 1, 1)
+    local transparency = combatVars.HitboxTransparency
     local color = combatVars.HitboxColor
     
-    for _, oChar in ipairs(charsFolder:GetChildren()) do
-        if oChar.Name ~= player.Name then
-            ResizeHitbox(oChar, size, transparency, color)
+    for _, otherChar in ipairs(charsFolder:GetChildren()) do
+        if otherChar.Name ~= player.Name then
+            resizeHitbox(otherChar, size, transparency, color)
         end
     end
 end
 
--- Auto-Parry (自动格挡) 函数
-local function deleteParryFromTable(oChar)
-    if parryTargets[oChar] then
-        if typeof(parryTargets[oChar]) == "RBXScriptConnection" then
-            parryTargets[oChar]:Disconnect()
+-- Auto-Parry functions
+local function removeParryTarget(otherChar)
+    if parryTargets[otherChar] then
+        if typeof(parryTargets[otherChar]) == "RBXScriptConnection" then
+            parryTargets[otherChar]:Disconnect()
         end
-        parryTargets[oChar] = nil
+        parryTargets[otherChar] = nil
     end
 end
 
-local function findTool(oChar)
-    local charTool = oChar:FindFirstChildWhichIsA("Tool")
+local function findTool(otherChar)
+    local charTool = otherChar:FindFirstChildWhichIsA("Tool")
     if charTool and charTool:FindFirstChild("Hitboxes") then
         return charTool, true
     end
 
-    local itemsA = oChar:FindFirstChild("ItemsAttached")
-    if itemsA then
-        local model = itemsA:FindFirstChildWhichIsA("Model")
+    local itemsAttached = otherChar:FindFirstChild("ItemsAttached")
+    if itemsAttached then
+        local model = itemsAttached:FindFirstChildWhichIsA("Model")
         if model and model:FindFirstChildWhichIsA("ObjectValue") then
             return model:FindFirstChildWhichIsA("ObjectValue").Value, false
         end
@@ -162,44 +187,52 @@ local function findTool(oChar)
     return nil, false
 end
 
-local function CreateOffsetPart(oChar)
-    local oHrp = oChar.HumanoidRootPart
-    local humanoid = oChar:FindFirstChild("Humanoid")
+local function getPredictedPosition(otherChar)
+    local otherHrp = otherChar.HumanoidRootPart
+    local humanoid = otherChar:FindFirstChild("Humanoid")
     local moveDirection = humanoid.MoveDirection
 
     if moveDirection.Magnitude == 0 then
-        return oHrp.Position
+        return otherHrp.Position
     else
         moveDirection = Vector3.new(moveDirection.X, 0, moveDirection.Z).Unit
-        return oHrp.Position + (moveDirection * parrySettings.Prediction)
+        return otherHrp.Position + (moveDirection * parrySettings.Prediction)
     end
 end
 
-local function Parry(oChar)
+local function executeParry(otherChar)
     if not (math.random(1, 100) <= parrySettings.Chance) then return end
     
-    local offset = CreateOffsetPart(oChar)
-    local distPlayersParrys = (offset - hrp.Position).Magnitude
+    local predictedPos = getPredictedPosition(otherChar)
+    local distance = (predictedPos - hrp.Position).Magnitude
 
-    if tonumber(parrySettings.Range) >= distPlayersParrys then
+    if distance <= parrySettings.Range then
         if combatVars.ParryEquip then
-            local myTool, equipped = findTool(char)
-            if not equipped and myTool then
+            local myTool, isEquipped = findTool(char)
+            if not isEquipped and myTool then
                 hum:EquipTool(myTool)
-                task.wait(0.1) -- 等待装备动画
+                task.wait(0.1) -- Wait for equip animation
             end
         end
         keyPress(combatVars.ParryKey)
     end
 end
 
+
+-- ## UI Creation & Logic Binding ##
+
+-- A clean Main tab for future additions
+Tabs.Main:AddLabel({Text = "Welcome to Obsidian (Integrated)!\nCombat features are in the 'Combat' tab."})
+
+-- ## Anti-Ragdoll ##
 local PlayerGroup = Tabs.Combat:AddLeftGroupbox("Player", "user-cog")
 PlayerGroup:AddToggle("AntiRagdoll", {
 	Text = "Anti-Ragdoll",
-	Tooltip = "防止你的角色进入布娃娃状态",
-	Default = false,
+	Tooltip = "Prevents your character from entering a ragdoll state.",
+	Default = combatVars.isAntiRagdollEnabled,
 	Callback = function(Value)
-		seeGarbage()
+        combatVars.isAntiRagdollEnabled = Value
+		scanGarbageCollector() -- Ensure GC has been scanned
 		if gameGc.RagdollTable and gameGc.OldRagdoll then
 			if Value then
 				gameGc.RagdollTable.toggleRagdoll = function() return end
@@ -207,7 +240,7 @@ PlayerGroup:AddToggle("AntiRagdoll", {
 				gameGc.RagdollTable.toggleRagdoll = gameGc.OldRagdoll
 			end
 		else
-			Library:Notify("错误: 未找到 Ragdoll 功能。此功能可能不兼容当前游戏版本。")
+			Library:Notify({Title = "Error", Description = "Ragdoll function not found. This feature may be incompatible."})
 		end
 	end,
 })
@@ -216,12 +249,12 @@ PlayerGroup:AddToggle("AntiRagdoll", {
 local HitboxGroup = Tabs.Combat:AddLeftGroupbox("Hitbox", "expand")
 HitboxGroup:AddToggle("HitboxExtender", {
 	Text = "Enable Hitbox Extender",
-	Tooltip = "增大其他玩家的攻击判定范围",
+	Tooltip = "Increases the visual hitbox of other players. No collision.",
 	Default = false,
 	Risky = true,
 	Callback = function(Value)
 		combatVars.HitboxEnabled = Value
-        changeAllHitboxes()
+        applyHitboxToAll()
 	end,
 })
 
@@ -234,21 +267,21 @@ HitboxGroup:AddSlider("HitboxSize", {
 	Callback = function(Value)
 		combatVars.HitboxSize = Value
 		if combatVars.HitboxEnabled then
-			changeAllHitboxes()
+			applyHitboxToAll()
 		end
 	end,
 })
 
 HitboxGroup:AddSlider("HitboxTransparency", {
 	Text = "Hitbox Transparency",
-    Default = combatVars.HitboxT,
+    Default = combatVars.HitboxTransparency,
     Min = 0,
     Max = 1,
     Rounding = 1,
 	Callback = function(Value)
-		combatVars.HitboxT = Value
+		combatVars.HitboxTransparency = Value
 		if combatVars.HitboxEnabled then
-			changeAllHitboxes()
+			applyHitboxToAll()
 		end
 	end,
 })
@@ -259,15 +292,16 @@ Toggles.HitboxExtender:AddColorPicker("HitboxColor", {
     Callback = function(Value)
         combatVars.HitboxColor = Value
         if combatVars.HitboxEnabled then
-            changeAllHitboxes()
+            applyHitboxToAll()
         end
     end,
 })
 
+-- ## Auto-Parry ##
 local ParryGroup = Tabs.Combat:AddRightGroupbox("Auto-Parry", "shield")
 ParryGroup:AddToggle("AutoParry", {
 	Text = "Enable Auto-Parry",
-	Tooltip = "自动格挡来自敌人的攻击",
+	Tooltip = "Automatically parries incoming attacks from enemies.",
 	Default = false,
 	Risky = true,
 	Callback = function(Value)
@@ -275,25 +309,25 @@ ParryGroup:AddToggle("AutoParry", {
 		if Value then
 			if conns.ParryCheck then conns.ParryCheck:Disconnect() end
 			conns.ParryCheck = RunService.RenderStepped:Connect(function()
-				for _, oChar in ipairs(charsFolder:GetChildren()) do
-					if oChar.Name ~= player.Name and oChar:FindFirstChild("HumanoidRootPart") then
-						local oHrp = oChar.HumanoidRootPart
-						local isNearby = (oHrp.Position - hrp.Position).Magnitude <= 50
+				for _, otherChar in ipairs(charsFolder:GetChildren()) do
+					if otherChar.Name ~= player.Name and otherChar:FindFirstChild("HumanoidRootPart") then
+						local isNearby = (otherChar.HumanoidRootPart.Position - hrp.Position).Magnitude <= 50
 
-						if isNearby and not parryTargets[oChar] then
-                            parryTargets[oChar] = true
-                            local tool, _ = findTool(oChar)
+						if isNearby and not parryTargets[otherChar] then
+                            parryTargets[otherChar] = true -- Mark as a potential target
+                            local tool, _ = findTool(otherChar)
                             if tool then
-                                parryTargets[oChar] = tool.DescendantAdded:Connect(function(child)
+                                -- Listen for when the enemy's weapon creates a hitbox
+                                parryTargets[otherChar] = tool.DescendantAdded:Connect(function(child)
                                     if child.Name == "Hitbox" or child.Name == "Damage" then
-                                        Parry(oChar)
+                                        executeParry(otherChar)
                                     end
                                 end)
                             else
-                                parryTargets[oChar] = nil
+                                parryTargets[otherChar] = nil -- No tool, no target
                             end
-                        elseif not isNearby and parryTargets[oChar] then
-							deleteParryFromTable(oChar)
+                        elseif not isNearby and parryTargets[otherChar] then
+							removeParryTarget(otherChar)
 						end
 					end
 				end
@@ -303,8 +337,8 @@ ParryGroup:AddToggle("AutoParry", {
 				conns.ParryCheck:Disconnect()
 				conns.ParryCheck = nil
 			end
-            for oChar, _ in pairs(parryTargets) do
-                deleteParryFromTable(oChar)
+            for otherChar, _ in pairs(parryTargets) do
+                removeParryTarget(otherChar)
             end
 		end
 	end,
@@ -319,7 +353,7 @@ ParryGroup:AddToggle("AutoParry", {
 
 ParryGroup:AddToggle("ParryEquip", {
 	Text = "Auto-Equip Weapon",
-	Tooltip = "在格挡前自动装备武器",
+	Tooltip = "Automatically equips your weapon before parrying.",
 	Default = false,
 	Callback = function(Value)
 		combatVars.ParryEquip = Value
@@ -359,80 +393,42 @@ ParryGroup:AddSlider("ParryChance", {
 	end,
 })
 
-conns.CharactersAdded = charsFolder.ChildAdded:Connect(function(oChar)
-    if oChar.Name ~= player.Name and combatVars.HitboxEnabled then
-        task.wait(0.5)
-        ResizeHitbox(oChar, Vector3.new(combatVars.HitboxSize,combatVars.HitboxSize,combatVars.HitboxSize), combatVars.HitboxT, combatVars.HitboxColor)
+
+-- ###################################################################################
+-- #
+-- #                         UI SETTINGS & EVENT CONNECTIONS
+-- #
+-- ###################################################################################
+
+-- ## Event Connections ##
+conns.CharactersAdded = charsFolder.ChildAdded:Connect(function(otherChar)
+    if otherChar.Name ~= player.Name and combatVars.HitboxEnabled then
+        task.wait(0.5) -- Wait for character to fully load
+        applyHitboxToAll()
     end
 end)
 
-conns.CharactersRemoved = charsFolder.ChildRemoved:Connect(function(oChar)
-    deleteParryFromTable(oChar)
+conns.CharactersRemoved = charsFolder.ChildRemoved:Connect(function(otherChar)
+    removeParryTarget(otherChar)
 end)
 
 player.CharacterAdded:Connect(function(newChar)
     char = newChar
     hrp = char:WaitForChild("HumanoidRootPart")
     hum = char:FindFirstChildWhichIsA("Humanoid")
-    -- 在角色重生后重新应用功能 (如果需要)
+    
+    -- Re-apply features on respawn
     task.wait(1)
     if combatVars.HitboxEnabled then
-        changeAllHitboxes()
+        applyHitboxToAll()
+    end
+    if combatVars.isAntiRagdollEnabled and gameGc.RagdollTable then
+        gameGc.RagdollTable.toggleRagdoll = function() return end
     end
 end)
 
-local LeftGroupBox = Tabs.Main:AddLeftGroupbox("Groupbox", "boxes")
 
-LeftGroupBox:AddToggle("MyToggle", {
-	Text = "This is a toggle",
-	Tooltip = "This is a tooltip",
-	Default = true,
-})
-
-LeftGroupBox:AddCheckbox("MyCheckbox", {
-	Text = "This is a checkbox",
-	Default = true,
-})
-
-local MyButton = LeftGroupBox:AddButton({
-	Text = "Button",
-	Func = function()
-		print("You clicked a button!")
-	end,
-})
-
-LeftGroupBox:AddLabel("This is a label")
-LeftGroupBox:AddDivider()
-
-LeftGroupBox:AddSlider("MySlider", {
-	Text = "This is my slider!",
-	Default = 0,
-	Min = 0,
-	Max = 5,
-	Rounding = 1,
-})
-
-LeftGroupBox:AddInput("MyTextbox", {
-	Default = "My textbox!",
-	Text = "This is a textbox",
-	Placeholder = "Placeholder text",
-})
-
-local DropdownGroupBox = Tabs.Main:AddRightGroupbox("Dropdowns")
-
-DropdownGroupBox:AddDropdown("MyDropdown", {
-	Values = { "This", "is", "a", "dropdown" },
-	Default = 1,
-	Text = "A dropdown",
-})
-
-LeftGroupBox:AddLabel("Keybind"):AddKeyPicker("KeyPicker", {
-	Default = "MB2",
-	Mode = "Toggle",
-	Text = "Auto lockpick safes",
-})
-
--- UI Settings
+-- ## UI Settings Tab ##
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("KeybindMenuOpen", {
 	Default = Library.KeybindFrame.Visible,
@@ -442,26 +438,26 @@ MenuGroup:AddToggle("KeybindMenuOpen", {
 	end,
 })
 MenuGroup:AddDropdown("DPIDropdown", {
-	Values = { "50%", "75%", "100%", "125%", "150%" },
+	Values = { "75%", "100%", "125%", "150%" },
 	Default = "100%",
-	Text = "DPI Scale",
+	Text = "UI Scale (DPI)",
 	Callback = function(Value)
 		Value = Value:gsub("%%", "")
 		Library:SetDPIScale(tonumber(Value))
 	end,
 })
 MenuGroup:AddDivider()
-MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
-MenuGroup:AddButton("Unload", function() Library:Unload() end)
+MenuGroup:AddLabel("Menu Bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Toggle Menu" })
+MenuGroup:AddButton("Unload", function() Library:Unload() end, {Risky = true})
 Library.ToggleKeybind = Options.MenuKeybind
 
--- Addons
+-- Addons Setup
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-ThemeManager:SetFolder("MyScriptHub")
-SaveManager:SetFolder("MyScriptHub/specific-game")
+ThemeManager:SetFolder("Obsidian_Integrated")
+SaveManager:SetFolder("Obsidian_Integrated/GameConfigs")
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 SaveManager:LoadAutoloadConfig()
