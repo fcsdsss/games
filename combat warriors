@@ -1,417 +1,467 @@
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Lighting = game:GetService("Lighting")
+
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local hrp = char:WaitForChild("HumanoidRootPart")
+local hum = char:FindFirstChildWhichIsA("Humanoid")
+local mouse = player:GetMouse()
+
+local charsFolder = Workspace:WaitForChild("PlayerCharacters", 20)
+
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-local CoreGui = game:GetService("CoreGui")
-local Toggles = Library.Toggles
 local Options = Library.Options
+local Toggles = Library.Toggles
 
-local localPlayer = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
-
-local ESPHolder = CoreGui:FindFirstChild("ESPHolder") or Instance.new("Folder", CoreGui)
-ESPHolder.Name = "ESPHolder"
-
-local parrySettings = {
-    Enabled = false,
-    Range = 13,
-    Prediction = 4,
-    Chance = 100,
-    Equip = false,
-    Debug = false
-}
-
-local hitboxSettings = {
-    Enabled = false,
-    Size = 2.5,
-    Transparency = 0.8,
-    Color = Color3.fromRGB(139, 0, 255)
-}
-
-local espSettings = {
-    Enabled = false,
-    Name = false,
-    Box = false,
-    Tracers = false,
-    HealthBar = false,
-    Distance = false,
-    Color = Color3.fromRGB(255, 0, 161),
-    MaxDistance = 4000
-}
+Library.ForceCheckbox = false
+Library.ShowToggleFrameInKeybinds = true
 
 local Window = Library:CreateWindow({
-	Title = "Combat Warriors Pro",
-	Footer = "核心功能集成版 v1.1",
+	Title = "mspaint (整合版)",
+	Footer = "version: integrated",
 	Icon = 95816097006870,
+	NotifySide = "Right",
+	ShowCustomCursor = true,
 })
 
 local Tabs = {
-	Combat = Window:AddTab("战斗", "swords"),
-    Visuals = Window:AddTab("透视", "eye")
+	Main = Window:AddTab("Main", "user"),
+    Combat = Window:AddTab("Combat", "swords"),
+	Key = Window:AddKeyTab("Key System"),
+	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
 
-local CombatLeft = Tabs.Combat:AddLeftGroupbox("近战", "sword")
 
-CombatLeft:AddToggle("noParryCooldown", {
-	Text = "无格挡冷却",
-	Tooltip = "移除格挡后的等待时间，可以无限格挡。",
-	Default = false,
-	Callback = function(Value)
-        pcall(function()
-            for i, v in pairs(getgc(true)) do
-                if type(v) == "table" and rawget(v, "PARRY_COOLDOWN_IN_SECONDS") then
-                    v.PARRY_COOLDOWN_IN_SECONDS = Value and 0 or 3
-                    v.PARRY_COOLDOWN_IN_SECONDS_AFTER_SUCCESSFUL_PARRY = Value and 0 or 0.33
-                end
-            end
-        end)
-	end,
-})
+local combatVars = {
+    HitboxEnabled = false,
+    HitboxSize = 4,
+    HitboxT = 0.7,
+    HitboxColor = Color3.fromRGB(255,0,0),
+
+    ParryEnabled = false,
+    ParryEquip = false,
+    ParryDebug = false,
+    ParryKey = Enum.KeyCode.F,
+
+    SawGarbage = false,
+}
+
+local parrySettings = {
+    Range = 13,
+    Prediction = 4,
+    Chance = 100,
+}
+
+local gameGc = {
+    OldRagdoll = nil,
+    RagdollTable = nil,
+}
+
+local conns = {
+    ParryCheck = nil,
+    CharactersAdded = nil,
+    CharactersRemoved = nil,
+}
 
 local parryTargets = {}
-local parryConnections = {}
 
-local function findParryTargets()
-    local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return end
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local distance = (myHRP.Position - player.Character.HumanoidRootPart.Position).Magnitude
-            if distance <= 50 and not parryTargets[player] then
-                parryTargets[player] = true
-            elseif distance > 50 and parryTargets[player] then
-                if parryConnections[player] then
-                    parryConnections[player]:Disconnect()
-                    parryConnections[player] = nil
-                end
-                parryTargets[player] = nil
+local function seeGarbage()
+    if combatVars.SawGarbage then return end
+    combatVars.SawGarbage = true
+    for _, v in ipairs(getgc(true)) do
+        if typeof(v) == "table" then
+            if rawget(v, "toggleRagdoll") then
+                gameGc.OldRagdoll = v.toggleRagdoll
+                gameGc.RagdollTable = v
+                print("Ragdoll function found.")
             end
         end
     end
 end
 
 local function keyPress(key)
-    pcall(function()
-        game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
-        task.wait()
-        game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
-    end)
+    VirtualInputManager:SendKeyEvent(true, key, false, game)
+    task.wait()
+    VirtualInputManager:SendKeyEvent(false, key, false, game)
 end
 
-local function executeParry(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character or not localPlayer.Character or not localPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+local function ResizeHitbox(oChar, size, transparency, color)
+    local head = oChar:FindFirstChild("Head")
+    if not head then return end
+
+    head.Size = size
+    head.Transparency = 1
+    head.CanCollide = false
+    head.Massless = true
+
+    local showHitboxPart = head:FindFirstChild("__ShowHitboxPart")
+    if not showHitboxPart then
+        showHitboxPart = Instance.new("Part")
+        showHitboxPart.Name = "__ShowHitboxPart"
+        showHitboxPart.Material = Enum.Material.Neon
+        showHitboxPart.Anchored = true -- 防止物理影响
+        showHitboxPart.CanCollide = false
+        showHitboxPart.Massless = true
+        showHitboxPart.Parent = head
+
+        local weld = Instance.new("WeldConstraint") -- 使用 WeldConstraint 更稳定
+        weld.Part0 = head
+        weld.Part1 = showHitboxPart
+        weld.Parent = showHitboxPart
+    end
+
+    showHitboxPart.Size = size
+    showHitboxPart.Color = color
+    showHitboxPart.Transparency = combatVars.HitboxEnabled and transparency or 1
+end
+
+local function changeAllHitboxes()
+    local size = combatVars.HitboxEnabled and Vector3.new(combatVars.HitboxSize, combatVars.HitboxSize, combatVars.HitboxSize) or Vector3.new(2,1,1)
+    local transparency = combatVars.HitboxT
+    local color = combatVars.HitboxColor
     
-    local chance = math.random(1, 100)
-    if chance > parrySettings.Chance then return end
+    for _, oChar in ipairs(charsFolder:GetChildren()) do
+        if oChar.Name ~= player.Name then
+            ResizeHitbox(oChar, size, transparency, color)
+        end
+    end
+end
 
-    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return end
+-- Auto-Parry (自动格挡) 函数
+local function deleteParryFromTable(oChar)
+    if parryTargets[oChar] then
+        if typeof(parryTargets[oChar]) == "RBXScriptConnection" then
+            parryTargets[oChar]:Disconnect()
+        end
+        parryTargets[oChar] = nil
+    end
+end
+
+local function findTool(oChar)
+    local charTool = oChar:FindFirstChildWhichIsA("Tool")
+    if charTool and charTool:FindFirstChild("Hitboxes") then
+        return charTool, true
+    end
+
+    local itemsA = oChar:FindFirstChild("ItemsAttached")
+    if itemsA then
+        local model = itemsA:FindFirstChildWhichIsA("Model")
+        if model and model:FindFirstChildWhichIsA("ObjectValue") then
+            return model:FindFirstChildWhichIsA("ObjectValue").Value, false
+        end
+    end
+    return nil, false
+end
+
+local function CreateOffsetPart(oChar)
+    local oHrp = oChar.HumanoidRootPart
+    local humanoid = oChar:FindFirstChild("Humanoid")
+    local moveDirection = humanoid.MoveDirection
+
+    if moveDirection.Magnitude == 0 then
+        return oHrp.Position
+    else
+        moveDirection = Vector3.new(moveDirection.X, 0, moveDirection.Z).Unit
+        return oHrp.Position + (moveDirection * parrySettings.Prediction)
+    end
+end
+
+local function Parry(oChar)
+    if not (math.random(1, 100) <= parrySettings.Chance) then return end
     
-    local myHRP = localPlayer.Character.HumanoidRootPart
-    local predictedPos = targetHRP.Position + (targetHRP.AssemblyLinearVelocity * (parrySettings.Prediction / 100))
-    local distance = (myHRP.Position - predictedPos).Magnitude
+    local offset = CreateOffsetPart(oChar)
+    local distPlayersParrys = (offset - hrp.Position).Magnitude
 
-    if distance <= parrySettings.Range then
-        if parrySettings.Equip then
-            local myTool = localPlayer.Character:FindFirstChildOfClass("Tool")
-            if not myTool then
-                local toolInBackpack = localPlayer.Backpack:FindFirstChildOfClass("Tool")
-                if toolInBackpack then
-                    pcall(function()
-                        localPlayer.Character.Humanoid:EquipTool(toolInBackpack)
-                    end)
-                    task.wait(0.1)
-                end
+    if tonumber(parrySettings.Range) >= distPlayersParrys then
+        if combatVars.ParryEquip then
+            local myTool, equipped = findTool(char)
+            if not equipped and myTool then
+                hum:EquipTool(myTool)
+                task.wait(0.1) -- 等待装备动画
             end
         end
-        keyPress(Enum.KeyCode.F)
+        keyPress(combatVars.ParryKey)
     end
 end
 
-local function setupParryListener()
-    for player, _ in pairs(parryTargets) do
-        if not parryConnections[player] and player and player.Character then
-            local tool = player.Character:FindFirstChildOfClass("Tool")
-            if tool then
-                parryConnections[player] = tool.DescendantAdded:Connect(function(child)
-                    if child.Name == "Hitbox" and child:IsA("Part") then
-                        executeParry(player)
-                    end
-                end)
-            end
-        end
-    end
-end
-
-RunService.Stepped:Connect(function()
-    if not parrySettings.Enabled then return end
-    findParryTargets()
-    setupParryListener()
-end)
-
-local function cleanupParry(player)
-    if parryConnections[player] then
-        parryConnections[player]:Disconnect()
-        parryConnections[player] = nil
-    end
-    if parryTargets[player] then
-        parryTargets[player] = nil
-    end
-end
-
-Players.PlayerRemoving:Connect(cleanupParry)
-
-local autoParryToggle = CombatLeft:AddToggle("autoParry", {
-    Text = "自动格挡 (Auto-Parry)",
-    Tooltip = "自动尝试格挡范围内的敌人攻击。",
-    Default = false,
-    Callback = function(value)
-        parrySettings.Enabled = value
-        if not value then
-            for player, conn in pairs(parryConnections) do
-                conn:Disconnect()
-            end
-            parryConnections = {}
-            parryTargets = {}
-        end
-    end
-})
-
-autoParryToggle:AddSlider("parryRange", { Text = "格挡范围", Min = 1, Max = 50, Default = 13, Rounding = 0, Callback = function(v) parrySettings.Range = v end })
-autoParryToggle:AddSlider("parryPrediction", { Text = "移动预测", Min = 0, Max = 50, Default = 4, Rounding = 0, Callback = function(v) parrySettings.Prediction = v end })
-autoParryToggle:AddSlider("parryChance", { Text = "格挡几率 (%)", Min = 1, Max = 100, Default = 100, Rounding = 0, Callback = function(v) parrySettings.Chance = v end })
-CombatLeft:AddToggle("parryEquip", { Text = "格挡时自动装备武器", Default = false, Callback = function(v) parrySettings.Equip = v end })
-
-local CombatRight = Tabs.Combat:AddRightGroupbox("攻击", "crosshair")
-
-CombatRight:AddToggle("selfHitbox", {
-	Text = "扩大自己武器的判定框",
-	Tooltip = "让你更容易击中敌人。需要重置角色才能恢复。",
-	Default = false, 
+local PlayerGroup = Tabs.Combat:AddLeftGroupbox("Player", "user-cog")
+PlayerGroup:AddToggle("AntiRagdoll", {
+	Text = "Anti-Ragdoll",
+	Tooltip = "防止你的角色进入布娃娃状态",
+	Default = false,
 	Callback = function(Value)
-		if Value and localPlayer.Character then
-			Library:Notify("判定框已扩大", "请重置你的角色以恢复默认大小。")
-			for i, v in pairs(localPlayer.Character:GetChildren()) do
-				if v:IsA("Tool") and v:FindFirstChild("Hitboxes") and v.Hitboxes:FindFirstChild("Hitbox") then
-					for i2, v2 in pairs(v.Hitboxes.Hitbox:GetChildren()) do
-						if v2:IsA("Attachment") and v2.Name == "DmgPoint" then
-							v2.Position = v2.Position + Vector3.new(0, 3, 0)
-						end
-					end
-				end
+		seeGarbage()
+		if gameGc.RagdollTable and gameGc.OldRagdoll then
+			if Value then
+				gameGc.RagdollTable.toggleRagdoll = function() return end
+			else
+				gameGc.RagdollTable.toggleRagdoll = gameGc.OldRagdoll
 			end
+		else
+			Library:Notify("错误: 未找到 Ragdoll 功能。此功能可能不兼容当前游戏版本。")
 		end
 	end,
 })
 
-local function resizePlayerHitbox(character, size, transparency)
-    if not character then return end
-    local head = character:FindFirstChild("Head")
-    if not head then return end
-
-    head.Size = size
-    head.CanCollide = false
-    head.Massless = true
-
-    local displayPart = head:FindFirstChild("__HitboxDisplay")
-    if not displayPart then
-        displayPart = Instance.new("Part")
-        displayPart.Name = "__HitboxDisplay"
-        displayPart.Anchored = true
-        displayPart.CanCollide = false
-        displayPart.Massless = true
-        displayPart.Material = Enum.Material.Neon
-        displayPart.Parent = head
-        local weld = Instance.new("WeldConstraint")
-        weld.Part0 = head
-        weld.Part1 = displayPart
-        weld.Parent = displayPart
-    end
-    
-    displayPart.Size = size
-    displayPart.Transparency = transparency
-    displayPart.Color = hitboxSettings.Color
-end
-
-local function updateAllPlayerHitboxes()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            if hitboxSettings.Enabled then
-                local size = Vector3.new(hitboxSettings.Size, hitboxSettings.Size, hitboxSettings.Size)
-                resizePlayerHitbox(player.Character, size, hitboxSettings.Transparency)
-            else
-                resizePlayerHitbox(player.Character, Vector3.new(2, 1, 1), 1)
-            end
-        end
-    end
-end
-
-local function onCharacter(character)
-    if hitboxSettings.Enabled then
-        task.wait(0.5)
-        local size = Vector3.new(hitboxSettings.Size, hitboxSettings.Size, hitboxSettings.Size)
-        resizePlayerHitbox(character, size, hitboxSettings.Transparency)
-    end
-    cleanupParry(character.Parent)
-end
-
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(onCharacter)
-end)
-
-local hitboxToggle = CombatRight:AddToggle("enemyHitbox", {
-    Text = "修改敌人Hitbox",
-    Tooltip = "增大敌人的头部判定框，使其更容易被击中。",
-    Default = false,
-    Callback = function(value)
-        hitboxSettings.Enabled = value
-        updateAllPlayerHitboxes()
-    end
+-- ## Hitbox Extender ##
+local HitboxGroup = Tabs.Combat:AddLeftGroupbox("Hitbox", "expand")
+HitboxGroup:AddToggle("HitboxExtender", {
+	Text = "Enable Hitbox Extender",
+	Tooltip = "增大其他玩家的攻击判定范围",
+	Default = false,
+	Risky = true,
+	Callback = function(Value)
+		combatVars.HitboxEnabled = Value
+        changeAllHitboxes()
+	end,
 })
 
-hitboxToggle:AddSlider("hitboxSize", { Text = "Hitbox 大小", Min = 1, Max = 20, Default = 2.5, Rounding = 1, Callback = function(v) hitboxSettings.Size = v; if hitboxSettings.Enabled then updateAllPlayerHitboxes() end end })
-hitboxToggle:AddSlider("hitboxTransparency", { Text = "Hitbox 透明度", Min = 0, Max = 1, Default = 0.8, Rounding = 1, Callback = function(v) hitboxSettings.Transparency = v; if hitboxSettings.Enabled then updateAllPlayerHitboxes() end end })
-hitboxToggle:AddColorPicker("hitboxColor", { Title = "Hitbox 颜色", Default = Color3.fromRGB(139, 0, 255), Callback = function(v) hitboxSettings.Color = v; if hitboxSettings.Enabled then updateAllPlayerHitboxes() end end })
+HitboxGroup:AddSlider("HitboxSize", {
+	Text = "Hitbox Size",
+    Default = combatVars.HitboxSize,
+    Min = 2,
+    Max = 20,
+    Rounding = 1,
+	Callback = function(Value)
+		combatVars.HitboxSize = Value
+		if combatVars.HitboxEnabled then
+			changeAllHitboxes()
+		end
+	end,
+})
 
-local VisualsLeft = Tabs.Visuals:AddLeftGroupbox("ESP 设置", "settings-2")
-local espToggle = VisualsLeft:AddToggle("enableEsp", { Text = "启用玩家透视 (ESP)", Default = false, Callback = function(value) espSettings.Enabled = value; ESPHolder.Enabled = value end })
-VisualsLeft:AddToggle("espName", { Text = "显示名称", Default = false, Callback = function(v) espSettings.Name = v end })
-VisualsLeft:AddToggle("espBox", { Text = "显示方框", Default = false, Callback = function(v) espSettings.Box = v end })
-VisualsLeft:AddToggle("espTracers", { Text = "显示射线", Default = false, Callback = function(v) espSettings.Tracers = v end })
-VisualsLeft:AddToggle("espHealthBar", { Text = "显示血条", Default = false, Callback = function(v) espSettings.HealthBar = v end })
-VisualsLeft:AddToggle("espDistance", { Text = "显示距离", Default = false, Callback = function(v) espSettings.Distance = v end })
-local VisualsRight = Tabs.Visuals:AddRightGroupbox("颜色和范围", "palette")
-VisualsRight:AddColorPicker("espColor", { Title = "ESP 颜色", Default = Color3.fromRGB(255, 0, 161), Callback = function(v) espSettings.Color = v end })
-VisualsRight:AddSlider("espDistanceSlider", { Text = "最大距离", Min = 100, Max = 5000, Default = 4000, Rounding = 0, Callback = function(v) espSettings.MaxDistance = v end })
+HitboxGroup:AddSlider("HitboxTransparency", {
+	Text = "Hitbox Transparency",
+    Default = combatVars.HitboxT,
+    Min = 0,
+    Max = 1,
+    Rounding = 1,
+	Callback = function(Value)
+		combatVars.HitboxT = Value
+		if combatVars.HitboxEnabled then
+			changeAllHitboxes()
+		end
+	end,
+})
 
-local espConnections = {}
+Toggles.HitboxExtender:AddColorPicker("HitboxColor", {
+    Default = combatVars.HitboxColor,
+    Title = "Hitbox Color",
+    Callback = function(Value)
+        combatVars.HitboxColor = Value
+        if combatVars.HitboxEnabled then
+            changeAllHitboxes()
+        end
+    end,
+})
 
-local function createEspForPlayer(player)
-    if player == localPlayer or espConnections[player] then return end
+local ParryGroup = Tabs.Combat:AddRightGroupbox("Auto-Parry", "shield")
+ParryGroup:AddToggle("AutoParry", {
+	Text = "Enable Auto-Parry",
+	Tooltip = "自动格挡来自敌人的攻击",
+	Default = false,
+	Risky = true,
+	Callback = function(Value)
+		combatVars.ParryEnabled = Value
+		if Value then
+			if conns.ParryCheck then conns.ParryCheck:Disconnect() end
+			conns.ParryCheck = RunService.RenderStepped:Connect(function()
+				for _, oChar in ipairs(charsFolder:GetChildren()) do
+					if oChar.Name ~= player.Name and oChar:FindFirstChild("HumanoidRootPart") then
+						local oHrp = oChar.HumanoidRootPart
+						local isNearby = (oHrp.Position - hrp.Position).Magnitude <= 50
 
-    local espFolder = Instance.new("Folder", ESPHolder)
-    espFolder.Name = player.Name
-    local boxGui = Instance.new("ScreenGui", espFolder)
-    local tracerGui = Instance.new("ScreenGui", espFolder)
-    local box = Instance.new("Frame", boxGui)
-    box.BorderSizePixel = 0; box.BackgroundColor3 = espSettings.Color; box.BackgroundTransparency = 1; box.BorderColor3 = espSettings.Color; box.BorderSizePixel = 1
-    local nameLabel = Instance.new("TextLabel", boxGui)
-    nameLabel.BackgroundTransparency = 1; nameLabel.Font = Enum.Font.SourceSans; nameLabel.TextColor3 = Color3.new(1,1,1); nameLabel.TextSize = 14; nameLabel.TextStrokeTransparency = 0
-    local healthBarBg = Instance.new("Frame", boxGui)
-    healthBarBg.BackgroundColor3 = Color3.new(0,0,0); healthBarBg.BorderSizePixel = 0
-    local healthBar = Instance.new("Frame", healthBarBg)
-    healthBar.BackgroundColor3 = Color3.new(0,1,0); healthBar.BorderSizePixel = 0
-    local tracer = Instance.new("Line", tracerGui)
-    tracer.Thickness = 1; tracer.Color = espSettings.Color
-    
-    local function updateEsp()
-        if not espSettings.Enabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or player.Character.Humanoid.Health <= 0 then
-            espFolder.Visible = false
-            return
-        end
-        espFolder.Visible = true
+						if isNearby and not parryTargets[oChar] then
+                            parryTargets[oChar] = true
+                            local tool, _ = findTool(oChar)
+                            if tool then
+                                parryTargets[oChar] = tool.DescendantAdded:Connect(function(child)
+                                    if child.Name == "Hitbox" or child.Name == "Damage" then
+                                        Parry(oChar)
+                                    end
+                                end)
+                            else
+                                parryTargets[oChar] = nil
+                            end
+                        elseif not isNearby and parryTargets[oChar] then
+							deleteParryFromTable(oChar)
+						end
+					end
+				end
+			end)
+		else
+			if conns.ParryCheck then
+				conns.ParryCheck:Disconnect()
+				conns.ParryCheck = nil
+			end
+            for oChar, _ in pairs(parryTargets) do
+                deleteParryFromTable(oChar)
+            end
+		end
+	end,
+})
+:AddKeyPicker("ParryKeybind", {
+    Default = "F",
+    Text = "Parry Key",
+    ChangedCallback = function(New)
+        combatVars.ParryKey = New
+    end,
+})
 
-        local hrp = player.Character.HumanoidRootPart
-        local head = player.Character.Head
-        
-        local distance = (camera.CFrame.Position - hrp.Position).Magnitude
-        if distance > espSettings.MaxDistance then
-            espFolder.Visible = false
-            return
-        end
-        
-        local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
-        if not onScreen then
-            espFolder.Visible = false
-            return
-        end
-        
-        local headPos = camera:WorldToViewportPoint(head.Position)
-        local boxHeight = math.abs(headPos.Y - screenPos.Y) + 10
-        local boxWidth = boxHeight / 2
-        local boxPos = Vector2.new(screenPos.X - boxWidth / 2, headPos.Y - 5)
+ParryGroup:AddToggle("ParryEquip", {
+	Text = "Auto-Equip Weapon",
+	Tooltip = "在格挡前自动装备武器",
+	Default = false,
+	Callback = function(Value)
+		combatVars.ParryEquip = Value
+	end,
+})
 
-        box.Visible = espSettings.Box
-        if espSettings.Box then
-            box.Position = UDim2.fromOffset(boxPos.X, boxPos.Y)
-            box.Size = UDim2.fromOffset(boxWidth, boxHeight)
-            box.BorderColor3 = espSettings.Color
-        end
-        
-        nameLabel.Visible = espSettings.Name or espSettings.Distance
-        if nameLabel.Visible then
-             local text = espSettings.Name and player.Name or ""
-             if espSettings.Distance then text = text .. " [" .. math.floor(distance) .. "m]" end
-             nameLabel.Text = text
-             nameLabel.Position = UDim2.fromOffset(boxPos.X + boxWidth / 2 - nameLabel.TextBounds.X / 2, boxPos.Y - 15)
-             nameLabel.TextColor3 = espSettings.Color
-        end
+ParryGroup:AddSlider("ParryRange", {
+	Text = "Parry Range",
+    Default = parrySettings.Range,
+    Min = 1,
+    Max = 50,
+    Rounding = 1,
+	Callback = function(Value)
+		parrySettings.Range = Value
+	end,
+})
 
-        healthBarBg.Visible = espSettings.HealthBar
-        if espSettings.HealthBar then
-            healthBarBg.Position = UDim2.fromOffset(boxPos.X - 6, boxPos.Y)
-            healthBarBg.Size = UDim2.fromOffset(4, boxHeight)
-            local healthPercent = player.Character.Humanoid.Health / player.Character.Humanoid.MaxHealth
-            healthBar.Size = UDim2.new(1, 0, healthPercent, 0)
-            healthBar.Position = UDim2.new(0,0,1-healthPercent,0)
-            healthBar.BackgroundColor3 = Color3.fromHSV(healthPercent / 3, 1, 1)
-        end
-        
-        tracer.Visible = espSettings.Tracers
-        if espSettings.Tracers then
-            tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-            tracer.To = Vector2.new(screenPos.X, screenPos.Y)
-            tracer.Color = espSettings.Color
-        end
+ParryGroup:AddSlider("ParryPrediction", {
+	Text = "Movement Prediction",
+    Default = parrySettings.Prediction,
+    Min = 0,
+    Max = 20,
+    Rounding = 1,
+	Callback = function(Value)
+		parrySettings.Prediction = Value
+	end,
+})
+
+ParryGroup:AddSlider("ParryChance", {
+	Text = "Parry Chance (%)",
+    Default = parrySettings.Chance,
+    Min = 1,
+    Max = 100,
+    Rounding = 0,
+	Callback = function(Value)
+		parrySettings.Chance = Value
+	end,
+})
+
+conns.CharactersAdded = charsFolder.ChildAdded:Connect(function(oChar)
+    if oChar.Name ~= player.Name and combatVars.HitboxEnabled then
+        task.wait(0.5)
+        ResizeHitbox(oChar, Vector3.new(combatVars.HitboxSize,combatVars.HitboxSize,combatVars.HitboxSize), combatVars.HitboxT, combatVars.HitboxColor)
     end
+end)
 
-    espConnections[player] = RunService.RenderStepped:Connect(updateEsp)
-end
+conns.CharactersRemoved = charsFolder.ChildRemoved:Connect(function(oChar)
+    deleteParryFromTable(oChar)
+end)
 
-local function clearEspForPlayer(player)
-    if espConnections[player] then
-        espConnections[player]:Disconnect()
-        espConnections[player] = nil
+player.CharacterAdded:Connect(function(newChar)
+    char = newChar
+    hrp = char:WaitForChild("HumanoidRootPart")
+    hum = char:FindFirstChildWhichIsA("Humanoid")
+    -- 在角色重生后重新应用功能 (如果需要)
+    task.wait(1)
+    if combatVars.HitboxEnabled then
+        changeAllHitboxes()
     end
-    local espFolder = ESPHolder:FindFirstChild(player.Name)
-    if espFolder then
-        espFolder:Destroy()
-    end
-end
+end)
 
-local function setupPlayer(player)
-    createEspForPlayer(player)
-    player.CharacterAdded:Connect(function(char)
-        onCharacter(char)
-        clearEspForPlayer(player)
-        createEspForPlayer(player)
-    end)
-    player.CharacterRemoving:Connect(function()
-        clearEspForPlayer(player)
-        cleanupParry(player)
-    end)
-end
+local LeftGroupBox = Tabs.Main:AddLeftGroupbox("Groupbox", "boxes")
 
-for _, player in pairs(Players:GetPlayers()) do
-    if player.Character then onCharacter(player.Character) end
-    setupPlayer(player)
-end
-Players.PlayerAdded:Connect(setupPlayer)
-Players.PlayerRemoving:Connect(clearEspForPlayer)
+LeftGroupBox:AddToggle("MyToggle", {
+	Text = "This is a toggle",
+	Tooltip = "This is a tooltip",
+	Default = true,
+})
 
-local SettingsTab = Window:AddTab("设置", "settings")
-local MenuGroup = SettingsTab:AddLeftGroupbox("菜单", "wrench")
-MenuGroup:AddLabel("菜单开关按键"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "菜单按键" })
+LeftGroupBox:AddCheckbox("MyCheckbox", {
+	Text = "This is a checkbox",
+	Default = true,
+})
+
+local MyButton = LeftGroupBox:AddButton({
+	Text = "Button",
+	Func = function()
+		print("You clicked a button!")
+	end,
+})
+
+LeftGroupBox:AddLabel("This is a label")
+LeftGroupBox:AddDivider()
+
+LeftGroupBox:AddSlider("MySlider", {
+	Text = "This is my slider!",
+	Default = 0,
+	Min = 0,
+	Max = 5,
+	Rounding = 1,
+})
+
+LeftGroupBox:AddInput("MyTextbox", {
+	Default = "My textbox!",
+	Text = "This is a textbox",
+	Placeholder = "Placeholder text",
+})
+
+local DropdownGroupBox = Tabs.Main:AddRightGroupbox("Dropdowns")
+
+DropdownGroupBox:AddDropdown("MyDropdown", {
+	Values = { "This", "is", "a", "dropdown" },
+	Default = 1,
+	Text = "A dropdown",
+})
+
+LeftGroupBox:AddLabel("Keybind"):AddKeyPicker("KeyPicker", {
+	Default = "MB2",
+	Mode = "Toggle",
+	Text = "Auto lockpick safes",
+})
+
+-- UI Settings
+local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
+MenuGroup:AddToggle("KeybindMenuOpen", {
+	Default = Library.KeybindFrame.Visible,
+	Text = "Open Keybind Menu",
+	Callback = function(value)
+		Library.KeybindFrame.Visible = value
+	end,
+})
+MenuGroup:AddDropdown("DPIDropdown", {
+	Values = { "50%", "75%", "100%", "125%", "150%" },
+	Default = "100%",
+	Text = "DPI Scale",
+	Callback = function(Value)
+		Value = Value:gsub("%%", "")
+		Library:SetDPIScale(tonumber(Value))
+	end,
+})
+MenuGroup:AddDivider()
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
+MenuGroup:AddButton("Unload", function() Library:Unload() end)
 Library.ToggleKeybind = Options.MenuKeybind
 
-if localPlayer.Character then
-    onCharacter(localPlayer.Character)
-else
-    localPlayer.CharacterAdded:Connect(onCharacter)
-end
-
-updateAllPlayerHitboxes()
+-- Addons
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+ThemeManager:SetFolder("MyScriptHub")
+SaveManager:SetFolder("MyScriptHub/specific-game")
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+SaveManager:LoadAutoloadConfig()
