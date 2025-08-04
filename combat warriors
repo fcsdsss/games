@@ -2,34 +2,216 @@ local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
 local Toggles = Library.Toggles
+local Options = Library.Options
+
+local localPlayer = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+local ESPHolder = CoreGui:FindFirstChild("ESPHolder") or Instance.new("Folder", CoreGui)
+ESPHolder.Name = "ESPHolder"
+
+local parrySettings = {
+    Enabled = false,
+    Range = 13,
+    Prediction = 4,
+    Chance = 100,
+    Equip = false,
+    Debug = false
+}
+
+local hitboxSettings = {
+    Enabled = false,
+    Size = 2.5,
+    Transparency = 0.8,
+    Color = Color3.fromRGB(139, 0, 255)
+}
+
+local espSettings = {
+    Enabled = false,
+    Name = false,
+    Box = false,
+    Tracers = false,
+    HealthBar = false,
+    Distance = false,
+    Color = Color3.fromRGB(255, 0, 161),
+    MaxDistance = 4000
+}
 
 local Window = Library:CreateWindow({
 	Title = "Combat Warriors Pro",
-	Footer = "逐一添加功能...",
+	Footer = "核心功能集成版",
 	Icon = 95816097006870,
 })
 
 local Tabs = {
 	Combat = Window:AddTab("战斗", "swords"),
+    Visuals = Window:AddTab("透视", "eye")
 }
 
-local CombatMelee = Tabs.Combat:AddLeftGroupbox("近战功能", "sword")
+local CombatLeft = Tabs.Combat:AddLeftGroupbox("近战", "sword")
 
-CombatMelee:AddToggle("hitboxExpander", {
-	Text = "扩大武器判定框 (Hitbox)",
+CombatLeft:AddToggle("noParryCooldown", {
+	Text = "无格挡冷却",
+	Tooltip = "移除格挡后的等待时间，可以无限格挡。",
+	Default = false,
+	Callback = function(Value)
+		for i, v in pairs(getgc(true)) do
+			if type(v) == "table" and rawget(v, "PARRY_COOLDOWN_IN_SECONDS") then
+				v.PARRY_COOLDOWN_IN_SECONDS = Value and 0 or 3
+				v.PARRY_COOLDOWN_IN_SECONDS_AFTER_SUCCESSFUL_PARRY = Value and 0 or 0.33
+			end
+		end
+	end,
+})
+
+local parryTargets = {}
+local lastParryTarget = nil
+local lastParryDistance = 0
+
+local function findParryTargets()
+    local myHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+            if targetHRP then
+                local distance = (myHRP.Position - targetHRP.Position).Magnitude
+                if distance <= 50 and not parryTargets[player] then
+                    parryTargets[player] = { active = true, conn = nil }
+                elseif distance > 50 and parryTargets[player] then
+                    if parryTargets[player].conn then
+                        parryTargets[player].conn:Disconnect()
+                    end
+                    parryTargets[player] = nil
+                end
+            end
+        end
+    end
+end
+
+local function keyPress(key)
+    game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
+    task.wait()
+    game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
+end
+
+local function executeParry(targetPlayer)
+    if not targetPlayer.Character or not localPlayer.Character then return end
+    
+    local chance = math.random(1, 100)
+    if chance > parrySettings.Chance then return end
+
+    local targetHRP = targetPlayer.Character.HumanoidRootPart
+    local myHRP = localPlayer.Character.HumanoidRootPart
+    
+    local predictedPos = targetHRP.Position + (targetHRP.Velocity * (parrySettings.Prediction / 100))
+    local distance = (myHRP.Position - predictedPos).Magnitude
+
+    lastParryTarget = targetPlayer.Name
+    lastParryDistance = distance
+
+    if distance <= parrySettings.Range then
+        if parrySettings.Equip then
+            local myTool = localPlayer.Character:FindFirstChildOfClass("Tool")
+            if not myTool then
+                local toolInBackpack = localPlayer.Backpack:FindFirstChildOfClass("Tool")
+                if toolInBackpack then
+                    localPlayer.Character.Humanoid:EquipTool(toolInBackpack)
+                    task.wait(0.1)
+                end
+            end
+        end
+        keyPress(Enum.KeyCode.F)
+    end
+end
+
+local function setupParryListener()
+    for player, data in pairs(parryTargets) do
+        if data.active and not data.conn and player.Character then
+            local tool = player.Character:FindFirstChildOfClass("Tool")
+            if tool then
+                data.conn = tool.DescendantAdded:Connect(function(child)
+                    if child.Name == "Hitbox" and child:IsA("Part") then
+                        executeParry(player)
+                    end
+                end)
+            end
+        end
+    end
+end
+
+RunService.Stepped:Connect(function()
+    if not parrySettings.Enabled then return end
+    findParryTargets()
+    setupParryListener()
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if parryTargets[player] then
+        if parryTargets[player].conn then
+            parryTargets[player].conn:Disconnect()
+        end
+        parryTargets[player] = nil
+    end
+end)
+
+
+local autoParryToggle = CombatLeft:AddToggle("autoParry", {
+    Text = "自动格挡 (Auto-Parry)",
+    Tooltip = "自动尝试格挡范围内的敌人攻击。",
+    Default = false,
+    Callback = function(value)
+        parrySettings.Enabled = value
+        if not value then
+            for player, data in pairs(parryTargets) do
+                if data.conn then data.conn:Disconnect() end
+            end
+            parryTargets = {}
+        end
+    end
+})
+
+autoParryToggle:AddSlider("parryRange", {
+    Text = "格挡范围", Min = 1, Max = 50, Default = 13, Rounding = 0,
+    Callback = function(v) parrySettings.Range = v end
+})
+
+autoParryToggle:AddSlider("parryPrediction", {
+    Text = "移动预测", Min = 0, Max = 50, Default = 4, Rounding = 0,
+    Callback = function(v) parrySettings.Prediction = v end
+})
+
+autoParryToggle:AddSlider("parryChance", {
+    Text = "格挡几率 (%)", Min = 1, Max = 100, Default = 100, Rounding = 0,
+    Callback = function(v) parrySettings.Chance = v end
+})
+
+CombatLeft:AddToggle("parryEquip", {
+    Text = "格挡时自动装备武器",
+    Default = false,
+    Callback = function(v) parrySettings.Equip = v end
+})
+
+
+local CombatRight = Tabs.Combat:AddRightGroupbox("攻击", "crosshair")
+
+CombatRight:AddToggle("selfHitbox", {
+	Text = "扩大自己武器的判定框",
 	Tooltip = "让你更容易击中敌人。需要重置角色才能恢复。",
 	Default = false, 
 	Callback = function(Value)
 		if Value then
 			Library:Notify("判定框已扩大", "请重置你的角色以恢复默认大小。")
-			-- 遍历玩家角色中的所有工具
-			for i, v in pairs(Players.LocalPlayer.Character:GetChildren()) do
+			for i, v in pairs(localPlayer.Character:GetChildren()) do
 				if v:IsA("Tool") and v:FindFirstChild("Hitboxes") and v.Hitboxes:FindFirstChild("Hitbox") then
-					-- 遍历工具判定框中的所有伤害点
 					for i2, v2 in pairs(v.Hitboxes.Hitbox:GetChildren()) do
 						if v2:IsA("Attachment") and v2.Name == "DmgPoint" then
-							-- 将伤害点的位置向上移动，从而扩大判定范围
 							v2.Position = v2.Position + Vector3.new(0, 3, 0)
 						end
 					end
@@ -39,29 +221,257 @@ CombatMelee:AddToggle("hitboxExpander", {
 	end,
 })
 
+local function resizePlayerHitbox(character, size, transparency)
+    local head = character:FindFirstChild("Head")
+    if not head then return end
 
-CombatMelee:AddToggle("noParryCooldown", {
-	Text = "无格挡冷却",
-	Tooltip = "移除格挡后的等待时间，可以无限格挡。",
-	Default = false,
-	Callback = function(Value)
-		for i, v in pairs(getgc(true)) do
-			if type(v) == "table" and rawget(v, "PARRY_COOLDOWN_IN_SECONDS") and rawget(v, "PARRY_COOLDOWN_IN_SECONDS_AFTER_SUCCESSFUL_PARRY") then
-				if Value then
-					v.PARRY_COOLDOWN_IN_SECONDS = 0
-					v.PARRY_COOLDOWN_IN_SECONDS_AFTER_SUCCESSFUL_PARRY = 0
-				else
-					v.PARRY_COOLDOWN_IN_SECONDS = 3
-					v.PARRY_COOLDOWN_IN_SECONDS_AFTER_SUCCESSFUL_PARRY = 0.33
-				end
-			end
-		end
-	end,
+    head.Size = size
+    head.CanCollide = false
+    head.Massless = true
+
+    local displayPart = head:FindFirstChild("__HitboxDisplay")
+    if not displayPart then
+        displayPart = Instance.new("Part")
+        displayPart.Name = "__HitboxDisplay"
+        displayPart.Anchored = true
+        displayPart.CanCollide = false
+        displayPart.Massless = true
+        displayPart.Material = Enum.Material.Neon
+        displayPart.Parent = head
+
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = head
+        weld.Part1 = displayPart
+        weld.Parent = displayPart
+    end
+    
+    displayPart.Size = size
+    displayPart.Transparency = transparency
+    displayPart.Color = hitboxSettings.Color
+end
+
+local function updateAllPlayerHitboxes()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            if hitboxSettings.Enabled then
+                local size = Vector3.new(hitboxSettings.Size, hitboxSettings.Size, hitboxSettings.Size)
+                resizePlayerHitbox(player.Character, size, hitboxSettings.Transparency)
+            else
+                resizePlayerHitbox(player.Character, Vector3.new(2, 1, 1), 1)
+            end
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        if hitboxSettings.Enabled then
+            task.wait(0.5)
+            local size = Vector3.new(hitboxSettings.Size, hitboxSettings.Size, hitboxSettings.Size)
+            resizePlayerHitbox(character, size, hitboxSettings.Transparency)
+        end
+    end)
+end)
+
+
+local hitboxToggle = CombatRight:AddToggle("enemyHitbox", {
+    Text = "修改敌人Hitbox",
+    Tooltip = "增大敌人的头部判定框，使其更容易被击中。",
+    Default = false,
+    Callback = function(value)
+        hitboxSettings.Enabled = value
+        updateAllPlayerHitboxes()
+    end
 })
 
-CombatMelee:AddDivider()
+hitboxToggle:AddSlider("hitboxSize", {
+    Text = "Hitbox 大小", Min = 1, Max = 20, Default = 2.5, Rounding = 1,
+    Callback = function(v) 
+        hitboxSettings.Size = v
+        if hitboxSettings.Enabled then updateAllPlayerHitboxes() end
+    end
+})
+
+hitboxToggle:AddSlider("hitboxTransparency", {
+    Text = "Hitbox 透明度", Min = 0, Max = 1, Default = 0.8, Rounding = 1,
+    Callback = function(v) 
+        hitboxSettings.Transparency = v 
+        if hitboxSettings.Enabled then updateAllPlayerHitboxes() end
+    end
+})
+
+hitboxToggle:AddColorPicker("hitboxColor", {
+    Title = "Hitbox 颜色",
+    Default = Color3.fromRGB(139, 0, 255),
+    Callback = function(v) 
+        hitboxSettings.Color = v 
+        if hitboxSettings.Enabled then updateAllPlayerHitboxes() end
+    end
+})
+
+local VisualsLeft = Tabs.Visuals:AddLeftGroupbox("ESP 设置", "settings-2")
+
+local espToggle = VisualsLeft:AddToggle("enableEsp", {
+    Text = "启用玩家透视 (ESP)",
+    Default = false,
+    Callback = function(value)
+        espSettings.Enabled = value
+        ESPHolder.Enabled = value
+    end
+})
+
+VisualsLeft:AddToggle("espName", { Text = "显示名称", Default = false, Callback = function(v) espSettings.Name = v end })
+VisualsLeft:AddToggle("espBox", { Text = "显示方框", Default = false, Callback = function(v) espSettings.Box = v end })
+VisualsLeft:AddToggle("espTracers", { Text = "显示射线", Default = false, Callback = function(v) espSettings.Tracers = v end })
+VisualsLeft:AddToggle("espHealthBar", { Text = "显示血条", Default = false, Callback = function(v) espSettings.HealthBar = v end })
+VisualsLeft:AddToggle("espDistance", { Text = "显示距离", Default = false, Callback = function(v) espSettings.Distance = v end })
+
+local VisualsRight = Tabs.Visuals:AddRightGroupbox("颜色和范围", "palette")
+VisualsRight:AddColorPicker("espColor", {
+    Title = "ESP 颜色",
+    Default = Color3.fromRGB(255, 0, 161),
+    Callback = function(v) espSettings.Color = v end
+})
+
+VisualsRight:AddSlider("espDistanceSlider", {
+    Text = "最大距离", Min = 100, Max = 5000, Default = 4000, Rounding = 0,
+    Callback = function(v) espSettings.MaxDistance = v end
+})
+
+local espConnections = {}
+
+local function createEspForPlayer(player)
+    if player == localPlayer or espConnections[player] then return end
+
+    local espFolder = Instance.new("Folder", ESPHolder)
+    espFolder.Name = player.Name
+
+    local boxGui = Instance.new("ScreenGui", espFolder)
+    local tracerGui = Instance.new("ScreenGui", espFolder)
+
+    local box = Instance.new("Frame", boxGui)
+    box.BorderSizePixel = 0
+    box.BackgroundColor3 = espSettings.Color
+    box.BackgroundTransparency = 1
+    box.BorderColor3 = espSettings.Color
+    box.BorderSizePixel = 1
+    
+    local nameLabel = Instance.new("TextLabel", boxGui)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.SourceSans
+    nameLabel.TextColor3 = Color3.new(1,1,1)
+    nameLabel.TextSize = 14
+    nameLabel.TextStrokeTransparency = 0
+    
+    local healthBarBg = Instance.new("Frame", boxGui)
+    healthBarBg.BackgroundColor3 = Color3.new(0,0,0)
+    healthBarBg.BorderSizePixel = 0
+    local healthBar = Instance.new("Frame", healthBarBg)
+    healthBar.BackgroundColor3 = Color3.new(0,1,0)
+    healthBar.BorderSizePixel = 0
+    
+    local tracer = Instance.new("Line", tracerGui)
+    tracer.Thickness = 1
+    tracer.Color = espSettings.Color
+    
+    local function updateEsp()
+        if not espSettings.Enabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or player.Character.Humanoid.Health <= 0 then
+            espFolder.Visible = false
+            return
+        end
+        espFolder.Visible = true
+
+        local hrp = player.Character.HumanoidRootPart
+        local head = player.Character.Head
+        
+        local distance = (camera.CFrame.Position - hrp.Position).Magnitude
+        if distance > espSettings.MaxDistance then
+            espFolder.Visible = false
+            return
+        end
+        
+        local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+        if not onScreen then
+            espFolder.Visible = false
+            return
+        end
+        
+        local headPos = camera:WorldToViewportPoint(head.Position)
+        local boxHeight = math.abs(headPos.Y - screenPos.Y) + 10
+        local boxWidth = boxHeight / 2
+        local boxPos = Vector2.new(screenPos.X - boxWidth / 2, headPos.Y - 5)
+
+        box.Visible = espSettings.Box
+        if espSettings.Box then
+            box.Position = UDim2.fromOffset(boxPos.X, boxPos.Y)
+            box.Size = UDim2.fromOffset(boxWidth, boxHeight)
+            box.BorderColor3 = espSettings.Color
+        end
+        
+        nameLabel.Visible = espSettings.Name or espSettings.Distance
+        if nameLabel.Visible then
+             local text = espSettings.Name and player.Name or ""
+             if espSettings.Distance then
+                 text = text .. " [" .. math.floor(distance) .. "m]"
+             end
+             nameLabel.Text = text
+             nameLabel.Position = UDim2.fromOffset(boxPos.X + boxWidth / 2 - nameLabel.TextBounds.X / 2, boxPos.Y - 15)
+             nameLabel.Color3 = espSettings.Color
+        end
+
+        healthBarBg.Visible = espSettings.HealthBar
+        if espSettings.HealthBar then
+            healthBarBg.Position = UDim2.fromOffset(boxPos.X - 6, boxPos.Y)
+            healthBarBg.Size = UDim2.fromOffset(4, boxHeight)
+            
+            local healthPercent = player.Character.Humanoid.Health / player.Character.Humanoid.MaxHealth
+            healthBar.Size = UDim2.new(1, 0, healthPercent, 0)
+            healthBar.Position = UDim2.new(0,0,1-healthPercent,0)
+            healthBar.BackgroundColor3 = Color3.fromHSV(healthPercent / 3, 1, 1)
+        end
+        
+        tracer.Visible = espSettings.Tracers
+        if espSettings.Tracers then
+            tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+            tracer.To = Vector2.new(screenPos.X, screenPos.Y)
+            tracer.Color = espSettings.Color
+        end
+    end
+
+    espConnections[player] = RunService.RenderStepped:Connect(updateEsp)
+end
 
 
-local MenuGroup = Tabs.Combat:AddRightGroupbox("菜单设置", "wrench")
+local function clearEspForPlayer(player)
+    if espConnections[player] then
+        espConnections[player]:Disconnect()
+        espConnections[player] = nil
+    end
+    local espFolder = ESPHolder:FindFirstChild(player.Name)
+    if espFolder then
+        espFolder:Destroy()
+    end
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    createEspForPlayer(player)
+    if player.Character then
+        player.CharacterAdded:Connect(function() createEspForPlayer(player) end)
+        player.CharacterRemoving:Connect(function() clearEspForPlayer(player) end)
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    createEspForPlayer(player)
+    player.CharacterAdded:Connect(function() createEspForPlayer(player) end)
+    player.CharacterRemoving:Connect(function() clearEspForPlayer(player) end)
+end)
+
+Players.PlayerRemoving:Connect(clearEspForPlayer)
+
+local SettingsTab = Window:AddTab("设置", "settings")
+local MenuGroup = SettingsTab:AddLeftGroupbox("菜单", "wrench")
 MenuGroup:AddLabel("菜单开关按键"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "菜单按键" })
-Library.ToggleKeybind = Library.Options.MenuKeybind
+Library.ToggleKeybind = Options.MenuKeybind
+
+updateAllPlayerHitboxes()
