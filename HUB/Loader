@@ -23,6 +23,13 @@ Window:CreateHomeTab({
     Icon = 2
 })
 
+AnnouncementsTab:CreateSection("2025年8月5日 - 更新日志")
+AnnouncementsTab:CreateParagraph({
+    Title = "8.5更新",
+    Text = "添加了GB脚本"
+})
+AnnouncementsTab:CreateDivider()
+
 AnnouncementsTab:CreateSection("2025年8月4日 - 更新日志")
 AnnouncementsTab:CreateParagraph({
     Title = "8.4更新",
@@ -141,6 +148,11 @@ ScriptsTab:CreateLabel({ Text = "状态: 正常运行", Style = 2 })
 ScriptsTab:CreateButton({ Name = "加载 地牢英雄 脚本", Callback = function() loadScript("地牢英雄", "https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/DungeonHeroes") end })
 ScriptsTab:CreateDivider()
 
+ScriptsTab:CreateSection("GB脚本")
+ScriptsTab:CreateParagraph({ Title = "介绍", Text = "一个脚本" })
+ScriptsTab:CreateLabel({ Text = "状态: 正常运行", Style = 2 })
+ScriptsTab:CreateButton({ Name = "加载 GB 脚本", Callback = function() loadScript("GB脚本", "https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/G%26B") end })
+ScriptsTab:CreateDivider()
 
 SettingsTab:CreateSection("Hub 主题")
 SettingsTab:BuildThemeSection()
