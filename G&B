@@ -1,0 +1,643 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+local Window = Library:CreateWindow({
+	Title = "Guts & Blackpowder 辅助工具",
+	Footer = "作者 x4yz & mspaint",
+	Center = true,
+	AutoShow = true,
+})
+
+local Tabs = {
+	Combat = Window:AddTab("战斗", "sword"),
+	Utility = Window:AddTab("工具", "wrench"),
+	Visuals = Window:AddTab("视觉", "eye"),
+	Music = Window:AddTab("音乐", "music"),
+	Settings = Window:AddTab("界面设置", "settings"),
+}
+
+local OldClock = os.clock()
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
+local UserInputService = game:GetService("UserInputService")
+
+local hookmetamethod = getfenv().hookmetamethod
+local getnamecallmethod = getfenv().getnamecallmethod
+local checkcaller = getfenv().checkcaller
+local getgenv = getfenv().getgenv or (function() return _G end)
+
+local CanUseHookMetamethod = (type(hookmetamethod) == "function")
+local CanUseGetNameCallMethod = (type(getnamecallmethod) == "function")
+local CanUseGetCheckCaller = (type(checkcaller) == "function")
+if not CanUseHookMetamethod or not CanUseGetNameCallMethod or not CanUseGetCheckCaller then
+	Library:Notify("你的执行器缺少必要函数 (hookmetamethod/getnamecallmethod)，部分绕过功能可能无法生效。", 8)
+end
+local OldNameCall = nil
+local OldIndex = nil
+
+type VectorLibrary = { create = (x:number, y:number, z:number) -> (Vector3), magnitude = (vec:Vector3) -> (number), normalize = (vec:Vector3) -> (Vector3), cross = (vec1:Vector3, vec2:Vector3) -> (Vector3), dot = (vec1:Vector3, vec2:Vector3) -> number, angle = (vec1:Vector3, vec2:Vector3, axis:Vector3) -> (number), floor = (vec:Vector3) -> (Vector3), ceil = (vec:Vector3) -> (Vector3), abs = (vec:Vector3) -> (Vector3), sign = (vec:Vector3) -> (Vector3), clamp = (vec:Vector3, min:Vector3, max:Vector3) -> (Vector3), max = (any:Vector3) -> (Vector3), min = (any:Vector3) -> (Vector3), zero = (Vector3), one = (Vector3) }
+type DebugLibrary = { info = (level:number, options:string) -> (any) }
+
+local vector:VectorLibrary = getfenv().vector
+local debug:DebugLibrary = getfenv().debug
+local ClientSubtitles:BindableEvent = (ReplicatedStorage:FindFirstChild("ClientSubtitles") or ReplicatedStorage:WaitForChild("ClientSubtitles", math.huge))
+
+if not Players.LocalPlayer then
+	repeat task.wait() until Players.LocalPlayer
+end
+local LocalPlayer:Player = Players.LocalPlayer
+local Backpack:Backpack
+task.spawn(function()
+    Backpack = (LocalPlayer:WaitForChild("Backpack", math.huge))
+end)
+
+local Remotes:Folder = (ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", math.huge))
+local AFKSignal:RemoteEvent = (Remotes:FindFirstChild("OnAFKSignalReceived") or Remotes:WaitForChild("OnAFKSignalReceived", math.huge))
+
+local ZombiesFolder:Folder = (Workspace:FindFirstChild("Zombies") or Workspace:WaitForChild("Zombies", math.huge))
+local BotsFolder:Folder = (Workspace:FindFirstChild("Bots"))
+local BuildingsFolder:Folder = (Workspace:FindFirstChild("Buildings") or Workspace:WaitForChild("Buildings", math.huge))
+local Camera:Camera = (Workspace.CurrentCamera or Workspace:FindFirstChildWhichIsA("Camera"))
+
+local HammerCanWarn:boolean = true
+local HammerWarnDelay:number = 1.5
+local WaitTimeUntilRepair:number = 0.125
+local CanRepair:boolean = true
+local ShoveRange:number = 15
+local MurderRange:number = 11
+local ZombieESPWait:number = 0.25
+local DefaultBeatWaitTime:number = 0.15
+
+local PreferredWeapon:{string} = {"Pike", "Lance"}
+local AgentTypeList = {
+    ["Barrel"] = true, ["BigBoy"] = false, ["Crawler"] = false, ["Fast"] = false,
+    ["Igniter"] = false, ["Normal"] = false, ["Sapper"] = false, ["Bot"] = false,
+    ["Headless"] = false, ["Cuirassier"] = false
+}
+local AllowedInstruments = { ["Fife"] = true, ["Drum"] = true }
+local MusicSelections = {
+    ["Musketer March"] = "Musketer March", ["Bjorneborgarnas Marsch"] = "Bjorneborgarnas Marsch",
+    ["Free America"] = "Free America", ["Mazurek Dabrowskiego"] = "Mazurek D\196\133browskiego",
+    ["Kalina Malina"] = "Kalina Malina", ["Kolonni Idushej Ataku"] = "Kolonni Idushej Ataku",
+    ["Marsh Preobrazhenskogo polka"] = "Marsh Preobrazhenskogo polka"
+}
+
+pcall(function()
+    getgenv()["FlameTouchRemover"]:Disconnect()
+    getgenv()["OnCameraDescendantAdded"]:Disconnect()
+    getgenv()["BuildingBindFunc"]:Disconnect()
+    if getgenv()["FakeAccuracyBeat"] then coroutine.close(getgenv()["FakeAccuracyBeat"]) end
+    if getgenv()["BuildHighlight"] then getgenv()["BuildHighlight"]:Destroy() end
+end)
+
+getgenv()["BuildHighlight"] = Instance.new("Highlight")
+getgenv()["BuildHighlight"].DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+getgenv()["BuildHighlight"].OutlineColor = Color3.fromRGB(255, 204, 0)
+getgenv()["BuildHighlight"].FillColor = Color3.fromRGB(255, 204, 102)
+getgenv()["BuildHighlight"].Parent = ReplicatedFirst
+getgenv()["BuildHighlight"].FillTransparency = 0.5
+getgenv()["BuildHighlight"].Enabled = true
+
+local function GenerateText(TemplateString:string, ...)
+    if (type(TemplateString) ~= "string") then return "[NO_TEMPLATE]" end
+    local Parameters = {...}
+    local Result = TemplateString:gsub("%[(%d+)%]", function(IndexString)
+        local CurrentIndex = tonumber(IndexString)
+        local Data = Parameters[CurrentIndex]
+        if (type(Data) ~= "table") then return ("[INVALID_DATA]") end
+        if (type(Data["Text"]) ~= "string") then Data["Text"] = ("[INVALID_TEXT]") end
+        local Color = ((typeof(Data["Color"]) == "Color3") and `#{Data["Color"]:ToHex()}`) or ((type(Data["Color"]) == "string") and Data["Color"]) or "#FFFFFF"
+        local Font = Data["Font"] or "Merriweather"
+        return string.format("<font color=\"%s\" face=\"%s\">%s</font>", Color, Font, Data["Text"])
+    end)
+    return Result
+end
+
+local function WaitForChildWhichIsA(Parent:Instance, ClassName:string, Name:string?, TimeOut:number?):(Instance|nil)
+	if (typeof(Parent) == "Instance") and (type(ClassName) == "string") then
+		local InstanceToReturn = Parent:FindFirstChildWhichIsA(ClassName)
+		if (type(Name) == "string") and InstanceToReturn and (InstanceToReturn.Name == Name) or InstanceToReturn then
+			return InstanceToReturn
+		end
+
+		local UseTimeOut = (type(TimeOut) == "number")
+		local EndedEarly:boolean = false
+		local TimeOutWasReached:boolean = false
+
+		if not UseTimeOut then
+			repeat
+				if not Parent or not Parent.Parent then EndedEarly = true break end
+                InstanceToReturn = Parent:FindFirstChildWhichIsA(ClassName)
+				if (type(Name) == "string") and InstanceToReturn and (InstanceToReturn.Name == Name) or InstanceToReturn then return InstanceToReturn end
+                task.wait()
+				InstanceToReturn = Parent and Parent:FindFirstChildWhichIsA(ClassName)
+				if (type(Name) == "string") and InstanceToReturn and (InstanceToReturn.Name == Name) or InstanceToReturn then return InstanceToReturn end
+			until ((typeof(InstanceToReturn) == "Instance") or EndedEarly or not Parent or not Parent.Parent)
+		else
+			local AbsTimeOut:number = math.abs(TimeOut or 1)
+			local StartTime:number = os.clock()
+			repeat
+				if ((os.clock() - StartTime) >= AbsTimeOut) then TimeOutWasReached = true EndedEarly = true break end
+				if not Parent or not Parent.Parent then EndedEarly = true break end
+                InstanceToReturn = Parent:FindFirstChildWhichIsA(ClassName)
+				if (type(Name) == "string") and InstanceToReturn and (InstanceToReturn.Name == Name) or InstanceToReturn then return InstanceToReturn end
+                task.wait()
+				InstanceToReturn = Parent and Parent:FindFirstChildWhichIsA(ClassName)
+				if (type(Name) == "string") and InstanceToReturn and (InstanceToReturn.Name == Name) or InstanceToReturn then return InstanceToReturn end
+			until ((typeof(InstanceToReturn) == "Instance") or EndedEarly or (os.clock() - StartTime) >= AbsTimeOut)
+		end
+		return InstanceToReturn
+	end
+	return nil
+end
+
+local function AddEsp(Character:Model, Head:BasePart?, Type:string, Color:Color3)
+    if (typeof(Character) ~= "Instance") or not Character:IsA("Model") or Character:HasTag("Highlighted_") then
+        return
+    end
+
+    local PrimaryPart = Character:FindFirstChild("HumanoidRootPart") or Character:FindFirstChild("Torso")
+    if not PrimaryPart then return end
+
+    Character:AddTag("Highlighted_")
+    local NewHighlight = Instance.new("BoxHandleAdornment")
+    NewHighlight.AlwaysOnTop = true
+    NewHighlight.ZIndex = 10
+    NewHighlight.Color3 = Color
+    NewHighlight.Size = Vector3.new(3, 5, 3)
+    NewHighlight.Transparency = 0.5
+    NewHighlight.Adornee = PrimaryPart
+    NewHighlight.Parent = Character
+
+    if Head and (typeof(Head) == "Instance" and Head:IsA("BasePart")) then
+        Head.Color = Color
+    end
+	
+	local conn
+	conn = Character.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			pcall(function() NewHighlight:Destroy() end)
+			pcall(function() Character:RemoveTag("Highlighted_") end)
+			conn:Disconnect()
+		end
+	end)
+end
+
+local function SetupFakeAccuracyBeat(RemoteEventToUse:RemoteEvent, BeatWaitTime:number?)
+	if (typeof(RemoteEventToUse) ~= "Instance") or not RemoteEventToUse:IsA("RemoteEvent") then 
+		return coroutine.create(function() end)
+	end
+
+	if (type(BeatWaitTime) ~= "number") or (BeatWaitTime <= 0) or (BeatWaitTime >= 5) or (BeatWaitTime ~= BeatWaitTime) then
+		BeatWaitTime = DefaultBeatWaitTime
+	end
+
+	local NewThread:thread = coroutine.create(function()
+		while task.wait(BeatWaitTime) do
+			pcall(function() RemoteEventToUse:FireServer("UpdateAccuracy", 100) end)
+		end
+	end)
+	coroutine.resume(NewThread)
+	return NewThread
+end
+
+local function GetMeleeWeapon(ListTools:boolean?)
+	local Character = LocalPlayer.Character
+	if not Character or not Character.Parent then return ListTools and {} or nil end
+
+	local List:{any} = {}
+	local function checkTool(Tool)
+		if Tool and Tool:IsA("Tool") then
+			if Tool:FindFirstChild("MeleeBase") or table.find({"Musket", "Shovel", "Rifle"}, Tool.Name) then
+				local remote = Tool:FindFirstChildWhichIsA("RemoteEvent")
+				local range = Tool:FindFirstChild("Configuration") and Tool:FindFirstChild("Configuration"):GetAttribute("LimitRange")
+				table.insert(List, {Tool, remote, range})
+				return true
+			end
+		end
+		return false
+	end
+	
+	for _, ToolName in pairs(PreferredWeapon) do
+		local tool = Character:FindFirstChild(ToolName)
+		if tool and checkTool(tool) and not ListTools then return List end
+	end
+	
+	for _, Tool in ipairs(Character:GetChildren()) do
+		if checkTool(Tool) and not ListTools then return List end
+	end
+	
+	if Backpack and Backpack:FindFirstChildWhichIsA("Tool") then
+		for _, Tool in ipairs(Backpack:GetChildren()) do
+			if checkTool(Tool) and not ListTools then return List end
+		end
+	end
+	
+	return ListTools and List or (#List > 0 and List or nil)
+end
+
+local function GetAgentsInRange(Position:(Vector3|nil?), Range:number)
+	local AgentsInRange:{[number]:any} = {}
+	if (type(Range) ~= "number") or (Range <= 0) then Range = 4 end
+	
+	local CharHRP_Pos
+	if typeof(Position) == "Vector3" then
+		CharHRP_Pos = Position
+	else
+		local Character = LocalPlayer.Character
+		if not Character or not Character.Parent then return AgentsInRange end
+		local HRP = Character:FindFirstChild("HumanoidRootPart") or Character.PrimaryPart
+		if not HRP then return AgentsInRange end
+		CharHRP_Pos = HRP.Position
+	end
+	
+	local function checkAgent(Agent)
+		if (typeof(Agent) == "Instance") and Agent:IsA("Model") and Agent.Parent and not Agent:FindFirstChildWhichIsA("ForceField") then
+			local HRP = Agent.PrimaryPart or Agent:FindFirstChild("HumanoidRootPart")
+			if HRP then
+				local ZombieType = Agent:GetAttribute("Type")
+				if not AgentTypeList[tostring(ZombieType)] then
+					local dist = (Vector3.new(CharHRP_Pos.X, 0, CharHRP_Pos.Z) - Vector3.new(HRP.Position.X, 0, HRP.Position.Z)).Magnitude
+					if dist <= Range then
+						table.insert(AgentsInRange, Agent)
+					end
+				end
+			end
+		end
+	end
+
+	if ZombiesFolder then for _, Agent in ipairs(ZombiesFolder:GetChildren()) do checkAgent(Agent) end end
+	if BotsFolder then for _, Agent in ipairs(BotsFolder:GetChildren()) do checkAgent(Agent) end end
+	
+	return AgentsInRange
+end
+
+local function IterateWithFunction(Table:{[any]:any}, Function:((any, any) -> (any)), Instant:boolean?)
+	if (type(Instant) ~= "boolean") then Instant = true end
+	if (type(Table) ~= "table") or (type(Function) ~= "function") then return end
+
+	if Instant then 
+		for Index:any, Key:any in pairs(Table) do task.spawn(Function, Index, Key) end
+	else
+		for Index:any, Key:any in pairs(Table) do Function(Index, Key) end
+	end
+end
+
+local function GetBuildingWithLeastHealth()
+	local LocalPlayerBuildings = BuildingsFolder:FindFirstChild(tostring(LocalPlayer.UserId))
+	if not LocalPlayerBuildings then return false end
+
+	local Healths = {}
+	for _, v in pairs(LocalPlayerBuildings:GetDescendants()) do
+		if (typeof(v) == "Instance") and (v.Name == "BuildingHealth") and v:IsA("NumberValue") then 
+			table.insert(Healths, v)
+		end
+	end
+
+	if #Healths > 0 then 
+		table.sort(Healths, function(a, b)
+			return (a.Value / (a:GetAttribute("MaxHealth") or a.Value)) < (b.Value / (b:GetAttribute("MaxHealth") or b.Value))
+		end)
+		return Healths[1]
+	end 
+	return false
+end
+
+local function GetClosestBuilding()
+	local Character = LocalPlayer.Character
+	if not Character or not Character.Parent then return false end
+
+	local LocalPlayerBuildings = BuildingsFolder:FindFirstChild(tostring(LocalPlayer.UserId))
+	if not LocalPlayerBuildings then return false end
+
+	local Bounds = {}
+	for _, v in pairs(LocalPlayerBuildings:GetDescendants()) do
+		if (typeof(v) == "Instance") and (v.Name == "Bound") and v:IsA("BasePart") then 
+			table.insert(Bounds, v)
+		end
+	end
+
+	if #Bounds > 0 then
+		table.sort(Bounds, function(a, b)
+			return LocalPlayer:DistanceFromCharacter(a.Position) < LocalPlayer:DistanceFromCharacter(b.Position)
+		end)
+		
+		local closestBound = Bounds[1]
+		if closestBound and closestBound.Parent then
+			local BuildingHealth = closestBound.Parent:FindFirstChild("BuildingHealth")
+			if BuildingHealth and BuildingHealth:IsA("NumberValue") then
+				local maxHealth = BuildingHealth:GetAttribute("MaxHealth") or BuildingHealth.Value
+				if BuildingHealth.Value < maxHealth then
+					return BuildingHealth
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function PerformShove()
+    if not LocalPlayer.Character or not LocalPlayer.Character.Parent then return end
+    local Character = LocalPlayer.Character
+    local AgentsInRange = GetAgentsInRange(nil, ShoveRange)
+    if #AgentsInRange == 0 then Library:Notify("范围内没有敌人可推开", 2); return end
+
+    local Weapon:Tool = Character:FindFirstChildWhichIsA("Tool")
+    if not Weapon or not table.find({"Axe", "Carbine", "Navy Pistol", "Pickaxe"}, Weapon.Name) then
+        if Toggles.AutoEquipShove.Value then
+            for _, toolName in ipairs({"Axe", "Carbine", "Navy Pistol", "Pickaxe"}) do
+                local toolInBackpack = Backpack:FindFirstChild(toolName)
+                if toolInBackpack then
+                    toolInBackpack.Parent = Character
+                    Weapon = toolInBackpack
+                    task.wait(0.1)
+                    break
+                end
+            end
+        end
+    end
+    
+    if not Weapon then Library:Notify("未找到或装备可推开的武器", 2); return end
+    
+    local Remote = Weapon:FindFirstChildWhichIsA("RemoteEvent")
+    if not Remote then return end
+    
+    Library:Notify("正在推开 " .. #AgentsInRange .. " 个敌人...", 2)
+
+    local action = (Weapon.Name == "Axe" or Weapon.Name == "Pickaxe") and "BraceBlock" or "Shove"
+    Remote:FireServer(action)
+    
+    if action == "BraceBlock" then
+        task.delay(0.25, function() pcall(function() Remote:FireServer("StopBraceBlock") end) end)
+    end
+
+    IterateWithFunction(AgentsInRange, function(_, Agent:Model)
+        if Agent and Agent.Parent and Agent:FindFirstChild("State") then
+            local pos = Agent.PrimaryPart and Agent.PrimaryPart.Position or (Agent:FindFirstChild("HumanoidRootPart") and Agent.HumanoidRootPart.Position)
+            if pos then Remote:FireServer("FeedbackStun", Agent, pos) end
+        end
+    end)
+end
+
+local function PerformAttack()
+    if not LocalPlayer.Character or not LocalPlayer.Character.Parent then return end
+    local Character = LocalPlayer.Character
+    local PrimaryPart = Character:FindFirstChild("HumanoidRootPart") or Character:FindFirstChild("Torso")
+    if not PrimaryPart then return end
+
+    local WeaponList = GetMeleeWeapon(false)
+    if not WeaponList or #WeaponList == 0 then Library:Notify("未找到可用的近战武器", 2); return end
+    
+    local WeaponData = WeaponList[1]
+    local Weapon, WeaponRemote, LimitRange = unpack(WeaponData)
+    
+    if not Weapon or not WeaponRemote then return end
+    
+    local effectiveRange = (LimitRange and (LimitRange * 1.8)) or MurderRange
+    local AgentsInRange = GetAgentsInRange(nil, effectiveRange)
+    if #AgentsInRange == 0 then Library:Notify("攻击范围内没有敌人", 2); return end
+    
+    Library:Notify("正在攻击 " .. #AgentsInRange .. " 个敌人...", 2)
+    
+    local useBayonet = (Weapon.Name == "Musket" or Weapon.Name == "Rifle")
+    if useBayonet then
+        WeaponRemote:FireServer("ThrustBayonet")
+    else
+        WeaponRemote:FireServer("Swing", (Weapon.Name == "Spade" and "Over" or "Side"))
+    end
+    
+    IterateWithFunction(AgentsInRange, function(_, Agent:Model)
+        if Agent and Agent.Parent and Agent:FindFirstChild("State") then
+            local isHeadshot = Toggles.ForceHeadshots.Value
+            local targetPart = (isHeadshot and Agent:FindFirstChild("Head") and "Head") or "HumanoidRootPart"
+            local hitPos = (PrimaryPart.CFrame * CFrame.new(0, 0, -5)).Position
+            
+            if useBayonet then
+                WeaponRemote:FireServer("Bayonet_HitZombie", Agent, hitPos, isHeadshot, targetPart)
+            else
+                local randomVec = Vector3.new(math.random(-4096, 4096), math.random(-4096, 4096), math.random(-4096, 4096))
+                WeaponRemote:FireServer("HitZombie", Agent, hitPos, isHeadshot, randomVec, targetPart, Vector3.new(0, 1, 0))
+            end
+        end
+    end)
+end
+
+getgenv()["BuildingBindFunc"] = RunService.Heartbeat:Connect(function()
+	if Toggles.AutoRepair.Value and CanRepair and LocalPlayer.Character then
+		local Character = LocalPlayer.Character
+		local Hammer = Backpack:FindFirstChild("Hammer") or Character:FindFirstChild("Hammer")
+
+		if Hammer then
+			local Remote = Hammer:FindFirstChild("RemoteEvent")
+			if Remote then
+				local BuildingFound = (Options.RepairMode.Value == "血量最少" and GetBuildingWithLeastHealth()) or GetClosestBuilding()
+
+				if typeof(BuildingFound) == "Instance" then
+                    CanRepair = false
+					getgenv()["BuildHighlight"].Adornee = BuildingFound.Parent
+					Remote:FireServer("Repair", BuildingFound)
+					task.delay(WaitTimeUntilRepair, function() CanRepair = true end)
+                else
+                    getgenv()["BuildHighlight"].Adornee = nil
+				end
+			end
+		else
+			if HammerCanWarn then
+				HammerCanWarn = false
+				Library:Notify("背包或身上未找到锤子", 3)
+				task.delay(HammerWarnDelay, function() HammerCanWarn = true end)
+			end
+		end
+	elseif not Toggles.AutoRepair.Value then
+		getgenv()["BuildHighlight"].Adornee = nil
+	end
+end)
+
+getgenv()["OnCameraDescendantAdded"] = Camera.DescendantAdded:Connect(function(Orig:Instance)
+	if Orig and Orig:IsA("ObjectValue") and (Orig.Name == "Orig") then 
+		task.wait(ZombieESPWait)
+		if not Orig or not Orig.Parent or not Orig.Value then return end
+
+		local Character:Model = Orig.Parent
+		local Agent:Model = Orig.Value
+		if not Character or not Agent or not Agent.Parent then return end
+		
+		local Type:string = tostring(Agent:GetAttribute("Type"))
+		local Head:BasePart = Character:FindFirstChild("Head", true)
+
+		if Head then Head.Transparency = 0.6 end
+
+		if Toggles.EnableESP.Value and Toggles["ESP_"..Type] and Toggles["ESP_"..Type].Value then
+			local espColor = Options["ESP_Color_"..Type] and Options["ESP_Color_"..Type].Value or Color3.new(1,1,1)
+			AddEsp(Character, Head, Type, espColor)
+		end
+	end
+end)
+
+getgenv()["FlameTouchRemover"] = Workspace.DescendantAdded:Connect(function(NewWorkspaceChild)
+	if NewWorkspaceChild and NewWorkspaceChild.Name == "IgniterFire" and NewWorkspaceChild:IsA("BasePart") then
+		pcall(function() NewWorkspaceChild:WaitForChild("TouchInterest", 3):Destroy() end)
+		NewWorkspaceChild.CanTouch = false
+	end
+end)
+
+local CombatGroup = Tabs.Combat:AddLeftGroupbox("战斗操作")
+CombatGroup:AddButton({ Text = "推开附近敌人", Tooltip = "使用当前武器的推开技能 (如刺刀、斧头)", Func = PerformShove })
+CombatGroup:AddButton({ Text = "攻击附近敌人", Tooltip = "使用近战武器攻击范围内的所有敌人", Func = PerformAttack })
+
+local AutomationGroup = Tabs.Combat:AddRightGroupbox("自动化设置")
+AutomationGroup:AddToggle("AutoEquipShove", { Text = "自动装备可推开的工具", Default = false, Tooltip = "在执行推开动作时，如果手上没有可用武器，则自动从背包装备一个。" })
+AutomationGroup:AddToggle("ForceHeadshots", { Text = "强制爆头", Default = true, Tooltip = "所有近战攻击都将被注册为爆头，以造成更高伤害。" })
+
+local BuildingGroup = Tabs.Utility:AddLeftGroupbox("建筑管理")
+BuildingGroup:AddToggle("AutoRepair", { Text = "自动修理", Default = false, Tooltip = "启用后，当你持有锤子时，会自动修理你受损的建筑。" })
+BuildingGroup:AddDropdown("RepairMode", { Text = "修理目标模式", Values = {"最近的", "血量最少"}, Default = "最近的" })
+
+local SystemGroup = Tabs.Utility:AddRightGroupbox("系统增强")
+SystemGroup:AddToggle("BlockBarrel", { Text = "阻止攻击油桶僵尸", Default = true, Tooltip = "防止你的自动攻击或手动攻击意外击中爆炸性的油桶僵尸。" })
+SystemGroup:AddToggle("AntiKick", { Text = "防踢/防挂机", Default = true, Tooltip = "阻止服务器因你挂机而将你踢出游戏。也会拦截部分作弊检测。" })
+
+local ESPGroup = Tabs.Visuals:AddLeftGroupbox("透视 (ESP) 设置")
+ESPGroup:AddToggle("EnableESP", { Text = "开启透视 (ESP)", Default = true, Tooltip = "总开关，高亮显示墙后的僵尸和其他敌人。" })
+ESPGroup:AddDivider()
+
+local zombieTypes = { Igniter = "点燃者", Fast = "奔跑者", Sapper = "工兵", Barrel = "油桶僵尸", Headless = "无头", Cuirassier = "胸甲骑兵" }
+local defaultColors = { Igniter = Color3.fromRGB(255, 255, 0), Fast = Color3.fromRGB(0, 255, 255), Sapper = Color3.fromRGB(255, 0, 255), Barrel = Color3.fromRGB(255, 123, 0), Headless = Color3.fromRGB(100, 0, 167), Cuirassier = Color3.fromRGB(35, 77, 255) }
+
+for type, name in pairs(zombieTypes) do
+    ESPGroup:AddToggle("ESP_"..type, { Text = name, Default = true })
+        :AddColorPicker("ESP_Color_"..type, { Default = defaultColors[type] or Color3.new(1,1,1), Title = name .. " 透视颜色" })
+end
+
+local MusicGroup = Tabs.Music:AddLeftGroupbox("乐器播放器")
+local songNames = {}
+for name, _ in pairs(MusicSelections) do table.insert(songNames, name) end
+
+MusicGroup:AddDropdown("SongSelect", { Text = "选择歌曲", Values = songNames, Default = 1, Searchable = true })
+
+local function PlayMusic()
+    local selectedSong = Options.SongSelect.Value
+    if not LocalPlayer.Character then return end
+    
+    local FoundInstrument
+    for name, _ in pairs(AllowedInstruments) do
+        FoundInstrument = LocalPlayer.Character:FindFirstChild(name) or Backpack:FindFirstChild(name)
+        if FoundInstrument then break end
+    end
+    
+    if FoundInstrument and FoundInstrument:IsA("Tool") then
+        local Remote = FoundInstrument:FindFirstChild("RemoteEvent")
+        if Remote and Remote:IsA("RemoteEvent") then
+            if getgenv()["FakeAccuracyBeat"] then coroutine.close(getgenv()["FakeAccuracyBeat"]) end
+            Remote:FireServer("Stop")
+            task.wait(0.1)
+            Remote:FireServer("Play", MusicSelections[selectedSong])
+            getgenv()["FakeAccuracyBeat"] = SetupFakeAccuracyBeat(Remote)
+            Library:Notify("正在播放: " .. selectedSong, 3)
+        end
+    else
+        Library:Notify("未找到可用的乐器 (军鼓或横笛)", 3)
+    end
+end
+
+local function StopMusic()
+    if getgenv()["FakeAccuracyBeat"] then coroutine.close(getgenv()["FakeAccuracyBeat"]); getgenv()["FakeAccuracyBeat"] = nil end
+    if not LocalPlayer.Character then return end
+    local FoundInstrument
+    for name, _ in pairs(AllowedInstruments) do
+        FoundInstrument = LocalPlayer.Character:FindFirstChild(name) or Backpack:FindFirstChild(name)
+        if FoundInstrument then break end
+    end
+    if FoundInstrument and FoundInstrument:IsA("Tool") then
+        local Remote = FoundInstrument:FindFirstChild("RemoteEvent")
+        if Remote then Remote:FireServer("Stop") end
+    end
+    Library:Notify("音乐已停止", 2)
+end
+
+MusicGroup:AddButton({ Text = "播放选中歌曲", Func = PlayMusic })
+MusicGroup:AddButton({ Text = "停止音乐", Func = StopMusic })
+
+if CanUseHookMetamethod and CanUseGetNameCallMethod and CanUseGetCheckCaller then
+	OldNameCall = hookmetamethod(game, "__namecall", function(self, ...)
+		local args = {...}
+		local method = getnamecallmethod()
+
+		if Toggles.AntiKick.Value then
+			if (self == LocalPlayer) and (method:lower() == "kick") then
+				Library:Notify("已拦截一次踢出请求", 3)
+				return
+			end
+			if not checkcaller() then
+				if method == "FireServer" then
+					if self == AFKSignal or self.Name == "OnAFKSignalReceived" or self.Name == "ForceKill" then
+						Library:Notify("已拦截一次挂机/强制击杀信号", 3)
+						return nil
+					end
+				end
+			end
+		end
+
+		if method == "FireServer" and #args > 0 then
+			if args[1] == "HitZombie" or args[1] == "Bayonet_HitZombie" then
+				if Toggles.BlockBarrel.Value and args[2] and args[2]:IsA("Model") and args[2]:GetAttribute("Type") == "Barrel" then
+					Library:Notify("已阻止攻击油桶僵尸", 2)
+					return nil
+				end
+				if Toggles.ForceHeadshots.Value then
+					args[4] = true
+					if args[1] == "Bayonet_HitZombie" then
+						args[5] = (args[2]:FindFirstChild("Head") and "Head") or args[5]
+					else
+						args[6] = (args[2]:FindFirstChild("Head") and "Head") or args[6]
+					end
+					return self[method](self, unpack(args))
+				end
+			end
+		end
+
+		return OldNameCall(self, ...)
+	end)
+
+	OldIndex = hookmetamethod(game, "__index", function(self, method)
+		if Toggles.AntiKick.Value and (self == LocalPlayer) and (method:lower() == "kick") then
+			return function() Library:Notify("已拦截一次踢出请求 (index)", 3) end
+		end
+		return OldIndex(self, method)
+	end)
+end
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+
+ThemeManager:SetFolder("GutsAndBlackpowder")
+SaveManager:SetFolder("GutsAndBlackpowder/configs")
+
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
+SaveManager:LoadAutoloadConfig()
+
+warn(
+	([[ 
+        [GUTS & BLACKPOWDER 辅助]
+        [QQ]: 586838631
+        [UI 作者]: deivid/mspaint
+
+        [信息]: 脚本成功执行！
+            - 耗时: %s 秒
+            - 所有功能均已集成至UI。请在界面中操作。
+    ]]):format(tostring(os.clock() - OldClock))
+)
+Library:Notify("脚本已加载！", 4, "loader")
+Library:Notify("UI 由 mspaint/deivid 实现", 5)
