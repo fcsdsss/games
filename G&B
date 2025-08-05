@@ -15,7 +15,7 @@ local Window = Library:CreateWindow({
 
 local Tabs = {
 	Combat = Window:AddTab("战斗", "sword"),
-	Utility = Window:AddTab("工具", "wrench"),
+	Utility = Window:AddTab("实用工具", "wrench"),
 	Visuals = Window:AddTab("视觉", "eye"),
 	Music = Window:AddTab("音乐", "music"),
 	Settings = Window:AddTab("界面设置", "settings"),
@@ -44,40 +44,37 @@ end
 local OldNameCall = nil
 local OldIndex = nil
 
-type VectorLibrary = { create = (x:number, y:number, z:number) -> (Vector3), magnitude = (vec:Vector3) -> (number), normalize = (vec:Vector3) -> (Vector3), cross = (vec1:Vector3, vec2:Vector3) -> (Vector3), dot = (vec1:Vector3, vec2:Vector3) -> number, angle = (vec1:Vector3, vec2:Vector3, axis:Vector3) -> (number), floor = (vec:Vector3) -> (Vector3), ceil = (vec:Vector3) -> (Vector3), abs = (vec:Vector3) -> (Vector3), sign = (vec:Vector3) -> (Vector3), clamp = (vec:Vector3, min:Vector3, max:Vector3) -> (Vector3), max = (any:Vector3) -> (Vector3), min = (any:Vector3) -> (Vector3), zero = (Vector3), one = (Vector3) }
-type DebugLibrary = { info = (level:number, options:string) -> (any) }
-
-local vector:VectorLibrary = getfenv().vector
-local debug:DebugLibrary = getfenv().debug
-local ClientSubtitles:BindableEvent = (ReplicatedStorage:FindFirstChild("ClientSubtitles") or ReplicatedStorage:WaitForChild("ClientSubtitles", math.huge))
+local vector = getfenv().vector
+local debug = getfenv().debug
+local ClientSubtitles = (ReplicatedStorage:FindFirstChild("ClientSubtitles") or ReplicatedStorage:WaitForChild("ClientSubtitles", math.huge))
 
 if not Players.LocalPlayer then
 	repeat task.wait() until Players.LocalPlayer
 end
-local LocalPlayer:Player = Players.LocalPlayer
-local Backpack:Backpack
+local LocalPlayer = Players.LocalPlayer
+local Backpack
 task.spawn(function()
     Backpack = (LocalPlayer:WaitForChild("Backpack", math.huge))
 end)
 
-local Remotes:Folder = (ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", math.huge))
-local AFKSignal:RemoteEvent = (Remotes:FindFirstChild("OnAFKSignalReceived") or Remotes:WaitForChild("OnAFKSignalReceived", math.huge))
+local Remotes = (ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", math.huge))
+local AFKSignal = (Remotes:FindFirstChild("OnAFKSignalReceived") or Remotes:WaitForChild("OnAFKSignalReceived", math.huge))
 
-local ZombiesFolder:Folder = (Workspace:FindFirstChild("Zombies") or Workspace:WaitForChild("Zombies", math.huge))
-local BotsFolder:Folder = (Workspace:FindFirstChild("Bots"))
-local BuildingsFolder:Folder = (Workspace:FindFirstChild("Buildings") or Workspace:WaitForChild("Buildings", math.huge))
-local Camera:Camera = (Workspace.CurrentCamera or Workspace:FindFirstChildWhichIsA("Camera"))
+local ZombiesFolder = (Workspace:FindFirstChild("Zombies") or Workspace:WaitForChild("Zombies", math.huge))
+local BotsFolder = (Workspace:FindFirstChild("Bots"))
+local BuildingsFolder = (Workspace:FindFirstChild("Buildings") or Workspace:WaitForChild("Buildings", math.huge))
+local Camera = (Workspace.CurrentCamera or Workspace:FindFirstChildWhichIsA("Camera"))
 
-local HammerCanWarn:boolean = true
-local HammerWarnDelay:number = 1.5
-local WaitTimeUntilRepair:number = 0.125
-local CanRepair:boolean = true
-local ShoveRange:number = 15
-local MurderRange:number = 11
-local ZombieESPWait:number = 0.25
-local DefaultBeatWaitTime:number = 0.15
+local HammerCanWarn = true
+local HammerWarnDelay = 1.5
+local WaitTimeUntilRepair = 0.125
+local CanRepair = true
+local ShoveRange = 15
+local MurderRange = 11
+local ZombieESPWait = 0.25
+local DefaultBeatWaitTime = 0.15
 
-local PreferredWeapon:{string} = {"Pike", "Lance"}
+local PreferredWeapon = {"Pike", "Lance"}
 local AgentTypeList = {
     ["Barrel"] = true, ["BigBoy"] = false, ["Crawler"] = false, ["Fast"] = false,
     ["Igniter"] = false, ["Normal"] = false, ["Sapper"] = false, ["Bot"] = false,
@@ -92,9 +89,9 @@ local MusicSelections = {
 }
 
 pcall(function()
-    getgenv()["FlameTouchRemover"]:Disconnect()
-    getgenv()["OnCameraDescendantAdded"]:Disconnect()
-    getgenv()["BuildingBindFunc"]:Disconnect()
+    if getgenv()["FlameTouchRemover"] then getgenv()["FlameTouchRemover"]:Disconnect() end
+    if getgenv()["OnCameraDescendantAdded"] then getgenv()["OnCameraDescendantAdded"]:Disconnect() end
+    if getgenv()["BuildingBindFunc"] then getgenv()["BuildingBindFunc"]:Disconnect() end
     if getgenv()["FakeAccuracyBeat"] then coroutine.close(getgenv()["FakeAccuracyBeat"]) end
     if getgenv()["BuildHighlight"] then getgenv()["BuildHighlight"]:Destroy() end
 end)
@@ -107,7 +104,7 @@ getgenv()["BuildHighlight"].Parent = ReplicatedFirst
 getgenv()["BuildHighlight"].FillTransparency = 0.5
 getgenv()["BuildHighlight"].Enabled = true
 
-local function GenerateText(TemplateString:string, ...)
+local function GenerateText(TemplateString, ...)
     if (type(TemplateString) ~= "string") then return "[NO_TEMPLATE]" end
     local Parameters = {...}
     local Result = TemplateString:gsub("%[(%d+)%]", function(IndexString)
@@ -122,7 +119,7 @@ local function GenerateText(TemplateString:string, ...)
     return Result
 end
 
-local function WaitForChildWhichIsA(Parent:Instance, ClassName:string, Name:string?, TimeOut:number?):(Instance|nil)
+local function WaitForChildWhichIsA(Parent, ClassName, Name, TimeOut)
 	if (typeof(Parent) == "Instance") and (type(ClassName) == "string") then
 		local InstanceToReturn = Parent:FindFirstChildWhichIsA(ClassName)
 		if (type(Name) == "string") and InstanceToReturn and (InstanceToReturn.Name == Name) or InstanceToReturn then
@@ -130,8 +127,8 @@ local function WaitForChildWhichIsA(Parent:Instance, ClassName:string, Name:stri
 		end
 
 		local UseTimeOut = (type(TimeOut) == "number")
-		local EndedEarly:boolean = false
-		local TimeOutWasReached:boolean = false
+		local EndedEarly = false
+		local TimeOutWasReached = false
 
 		if not UseTimeOut then
 			repeat
@@ -143,8 +140,8 @@ local function WaitForChildWhichIsA(Parent:Instance, ClassName:string, Name:stri
 				if (type(Name) == "string") and InstanceToReturn and (InstanceToReturn.Name == Name) or InstanceToReturn then return InstanceToReturn end
 			until ((typeof(InstanceToReturn) == "Instance") or EndedEarly or not Parent or not Parent.Parent)
 		else
-			local AbsTimeOut:number = math.abs(TimeOut or 1)
-			local StartTime:number = os.clock()
+			local AbsTimeOut = math.abs(TimeOut or 1)
+			local StartTime = os.clock()
 			repeat
 				if ((os.clock() - StartTime) >= AbsTimeOut) then TimeOutWasReached = true EndedEarly = true break end
 				if not Parent or not Parent.Parent then EndedEarly = true break end
@@ -160,7 +157,7 @@ local function WaitForChildWhichIsA(Parent:Instance, ClassName:string, Name:stri
 	return nil
 end
 
-local function AddEsp(Character:Model, Head:BasePart?, Type:string, Color:Color3)
+local function AddEsp(Character, Head, Type, Color)
     if (typeof(Character) ~= "Instance") or not Character:IsA("Model") or Character:HasTag("Highlighted_") then
         return
     end
@@ -186,13 +183,13 @@ local function AddEsp(Character:Model, Head:BasePart?, Type:string, Color:Color3
 	conn = Character.AncestryChanged:Connect(function(_, parent)
 		if not parent then
 			pcall(function() NewHighlight:Destroy() end)
-			pcall(function() Character:RemoveTag("Highlighted_") end)
+			pcall(function() if Character and Character.Parent then Character:RemoveTag("Highlighted_") end end)
 			conn:Disconnect()
 		end
 	end)
 end
 
-local function SetupFakeAccuracyBeat(RemoteEventToUse:RemoteEvent, BeatWaitTime:number?)
+local function SetupFakeAccuracyBeat(RemoteEventToUse, BeatWaitTime)
 	if (typeof(RemoteEventToUse) ~= "Instance") or not RemoteEventToUse:IsA("RemoteEvent") then 
 		return coroutine.create(function() end)
 	end
@@ -201,7 +198,7 @@ local function SetupFakeAccuracyBeat(RemoteEventToUse:RemoteEvent, BeatWaitTime:
 		BeatWaitTime = DefaultBeatWaitTime
 	end
 
-	local NewThread:thread = coroutine.create(function()
+	local NewThread = coroutine.create(function()
 		while task.wait(BeatWaitTime) do
 			pcall(function() RemoteEventToUse:FireServer("UpdateAccuracy", 100) end)
 		end
@@ -210,11 +207,11 @@ local function SetupFakeAccuracyBeat(RemoteEventToUse:RemoteEvent, BeatWaitTime:
 	return NewThread
 end
 
-local function GetMeleeWeapon(ListTools:boolean?)
+local function GetMeleeWeapon(ListTools)
 	local Character = LocalPlayer.Character
 	if not Character or not Character.Parent then return ListTools and {} or nil end
 
-	local List:{any} = {}
+	local List = {}
 	local function checkTool(Tool)
 		if Tool and Tool:IsA("Tool") then
 			if Tool:FindFirstChild("MeleeBase") or table.find({"Musket", "Shovel", "Rifle"}, Tool.Name) then
@@ -245,8 +242,8 @@ local function GetMeleeWeapon(ListTools:boolean?)
 	return ListTools and List or (#List > 0 and List or nil)
 end
 
-local function GetAgentsInRange(Position:(Vector3|nil?), Range:number)
-	local AgentsInRange:{[number]:any} = {}
+local function GetAgentsInRange(Position, Range)
+	local AgentsInRange = {}
 	if (type(Range) ~= "number") or (Range <= 0) then Range = 4 end
 	
 	local CharHRP_Pos
@@ -281,14 +278,14 @@ local function GetAgentsInRange(Position:(Vector3|nil?), Range:number)
 	return AgentsInRange
 end
 
-local function IterateWithFunction(Table:{[any]:any}, Function:((any, any) -> (any)), Instant:boolean?)
+local function IterateWithFunction(Table, Function, Instant)
 	if (type(Instant) ~= "boolean") then Instant = true end
 	if (type(Table) ~= "table") or (type(Function) ~= "function") then return end
 
 	if Instant then 
-		for Index:any, Key:any in pairs(Table) do task.spawn(Function, Index, Key) end
+		for Index, Key in pairs(Table) do task.spawn(Function, Index, Key) end
 	else
-		for Index:any, Key:any in pairs(Table) do Function(Index, Key) end
+		for Index, Key in pairs(Table) do Function(Index, Key) end
 	end
 end
 
@@ -351,7 +348,7 @@ local function PerformShove()
     local AgentsInRange = GetAgentsInRange(nil, ShoveRange)
     if #AgentsInRange == 0 then Library:Notify("范围内没有敌人可推开", 2); return end
 
-    local Weapon:Tool = Character:FindFirstChildWhichIsA("Tool")
+    local Weapon = Character:FindFirstChildWhichIsA("Tool")
     if not Weapon or not table.find({"Axe", "Carbine", "Navy Pistol", "Pickaxe"}, Weapon.Name) then
         if Toggles.AutoEquipShove.Value then
             for _, toolName in ipairs({"Axe", "Carbine", "Navy Pistol", "Pickaxe"}) do
@@ -380,7 +377,7 @@ local function PerformShove()
         task.delay(0.25, function() pcall(function() Remote:FireServer("StopBraceBlock") end) end)
     end
 
-    IterateWithFunction(AgentsInRange, function(_, Agent:Model)
+    IterateWithFunction(AgentsInRange, function(_, Agent)
         if Agent and Agent.Parent and Agent:FindFirstChild("State") then
             local pos = Agent.PrimaryPart and Agent.PrimaryPart.Position or (Agent:FindFirstChild("HumanoidRootPart") and Agent.HumanoidRootPart.Position)
             if pos then Remote:FireServer("FeedbackStun", Agent, pos) end
@@ -415,7 +412,7 @@ local function PerformAttack()
         WeaponRemote:FireServer("Swing", (Weapon.Name == "Spade" and "Over" or "Side"))
     end
     
-    IterateWithFunction(AgentsInRange, function(_, Agent:Model)
+    IterateWithFunction(AgentsInRange, function(_, Agent)
         if Agent and Agent.Parent and Agent:FindFirstChild("State") then
             local isHeadshot = Toggles.ForceHeadshots.Value
             local targetPart = (isHeadshot and Agent:FindFirstChild("Head") and "Head") or "HumanoidRootPart"
@@ -462,17 +459,17 @@ getgenv()["BuildingBindFunc"] = RunService.Heartbeat:Connect(function()
 	end
 end)
 
-getgenv()["OnCameraDescendantAdded"] = Camera.DescendantAdded:Connect(function(Orig:Instance)
+getgenv()["OnCameraDescendantAdded"] = Camera.DescendantAdded:Connect(function(Orig)
 	if Orig and Orig:IsA("ObjectValue") and (Orig.Name == "Orig") then 
 		task.wait(ZombieESPWait)
 		if not Orig or not Orig.Parent or not Orig.Value then return end
 
-		local Character:Model = Orig.Parent
-		local Agent:Model = Orig.Value
+		local Character = Orig.Parent
+		local Agent = Orig.Value
 		if not Character or not Agent or not Agent.Parent then return end
 		
-		local Type:string = tostring(Agent:GetAttribute("Type"))
-		local Head:BasePart = Character:FindFirstChild("Head", true)
+		local Type = tostring(Agent:GetAttribute("Type"))
+		local Head = Character:FindFirstChild("Head", true)
 
 		if Head then Head.Transparency = 0.6 end
 
@@ -535,7 +532,7 @@ local function PlayMusic()
     end
     
     if FoundInstrument and FoundInstrument:IsA("Tool") then
-        local Remote = FoundInstrument:FindFirstChild("RemoteEvent")
+        local Remote = FoundInstrument:FindFirstChildWhichIsA("RemoteEvent")
         if Remote and Remote:IsA("RemoteEvent") then
             if getgenv()["FakeAccuracyBeat"] then coroutine.close(getgenv()["FakeAccuracyBeat"]) end
             Remote:FireServer("Stop")
@@ -558,7 +555,7 @@ local function StopMusic()
         if FoundInstrument then break end
     end
     if FoundInstrument and FoundInstrument:IsA("Tool") then
-        local Remote = FoundInstrument:FindFirstChild("RemoteEvent")
+        local Remote = FoundInstrument:FindFirstChildWhichIsA("RemoteEvent")
         if Remote then Remote:FireServer("Stop") end
     end
     Library:Notify("音乐已停止", 2)
@@ -627,17 +624,3 @@ SaveManager:SetFolder("GutsAndBlackpowder/configs")
 SaveManager:BuildConfigSection(Tabs.Settings)
 ThemeManager:ApplyToTab(Tabs.Settings)
 SaveManager:LoadAutoloadConfig()
-
-warn(
-	([[ 
-        [GUTS & BLACKPOWDER 辅助]
-        [QQ]: 586838631
-        [UI 作者]: deivid/mspaint
-
-        [信息]: 脚本成功执行！
-            - 耗时: %s 秒
-            - 所有功能均已集成至UI。请在界面中操作。
-    ]]):format(tostring(os.clock() - OldClock))
-)
-Library:Notify("脚本已加载！", 4, "loader")
-Library:Notify("UI 由 mspaint/deivid 实现", 5)
