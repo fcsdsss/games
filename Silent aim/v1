@@ -285,7 +285,12 @@ resume(create(function()
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and closestPlayerPart then
-            local targetScreenPos, IsOnScreen = getPositionOnScreen(closestPlayerPart.Position)
+            local targetCharacter = closestPlayerPart.Parent
+            local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
+            local tracerTargetPosition = (targetHead and targetHead.Position) or closestPlayerPart.Position
+            
+            local targetScreenPos, IsOnScreen = getPositionOnScreen(tracerTargetPosition)
+
             tracer_line.Visible = IsOnScreen
             if IsOnScreen then
                 tracer_line.From = Camera.ViewportSize / 2
