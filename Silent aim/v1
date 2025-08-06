@@ -105,8 +105,9 @@ do
 end
 
 local function getPositionOnScreen(Vector)
+    local Inset = GuiInset()
     local Vec3, OnScreen = WorldToScreen(Camera, Vector)
-    return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+    return Vector2.new(Vec3.X + Inset.X, Vec3.Y + Inset.Y), OnScreen
 end
 
 local function ValidateArguments(Args, RayMethod)
