@@ -259,8 +259,8 @@ Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value en
 VisualsGroupBox:AddSlider('TracerYOffsetSlider', {
     Text = 'Tracer Y-Axis Offset',
     Default = SilentAimSettings.Tracer_Y_Offset,
-    Min = -2,
-    Max = 2,
+    Min = 1,
+    Max = 60,
     Rounding = 3,
     Suffix = " studs"
 })
