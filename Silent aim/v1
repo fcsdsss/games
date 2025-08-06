@@ -8,25 +8,21 @@ end
 
 local SilentAimSettings = {
     Enabled = false,
-    
     ClassName = "Universal Silent Aim - Averiias, Stefanuk12, xaxa",
     ToggleKey = "RightAlt",
-    
     TeamCheck = false,
     VisibleCheck = false, 
     TargetPart = "HumanoidRootPart",
     SilentAimMethod = "Raycast",
-    
     FOVRadius = 130,
     FOVVisible = false,
     ShowSilentAimTarget = false, 
-    
     MouseHitPrediction = false,
     MouseHitPredictionAmount = 0.165,
     HitChance = 100
 }
 
-getgenv().SilentAimSettings = SilentAimSettings -- 使用 getgenv() 以确保在整个脚本中可访问
+getgenv().SilentAimSettings = SilentAimSettings
 local MainFileName = "UniversalSilentAim"
 local SelectedFile, FileToSave = "", ""
 
@@ -77,27 +73,19 @@ fov_circle.Color = Color3.fromRGB(54, 57, 241)
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = {
         ArgCountRequired = 3,
-        Args = {
-            "Instance", "Ray", "table", "boolean", "boolean"
-        }
+        Args = {"Instance", "Ray", "table", "boolean", "boolean"}
     },
     FindPartOnRayWithWhitelist = {
         ArgCountRequired = 3,
-        Args = {
-            "Instance", "Ray", "table", "boolean"
-        }
+        Args = {"Instance", "Ray", "table", "boolean"}
     },
     FindPartOnRay = {
         ArgCountRequired = 2,
-        Args = {
-            "Instance", "Ray", "Instance", "boolean", "boolean"
-        }
+        Args = {"Instance", "Ray", "Instance", "boolean", "boolean"}
     },
     Raycast = {
         ArgCountRequired = 3,
-        Args = {
-            "Instance", "Vector3", "Vector3", "RaycastParams"
-        }
+        Args = {"Instance", "Vector3", "Vector3", "RaycastParams"}
     }
 }
 
@@ -107,7 +95,6 @@ function CalculateChance(Percentage)
     return chance <= Percentage / 100
 end
 
---[[旧的文件处理逻辑 - 函数保留，但UI部分将被SaveManager替代]]
 do 
     if not isfolder(MainFileName) then 
         makefolder(MainFileName);
@@ -120,7 +107,7 @@ end
 
 local Files = listfiles(string.format("%s/%s", "UniversalSilentAim", tostring(game.PlaceId)))
 
-local function GetFiles() -- credits to the linoria lib for this function
+local function GetFiles()
 	local out = {}
     local filesList = listfiles(string.format("%s/%s", "UniversalSilentAim", tostring(game.PlaceId)))
 	for i = 1, #filesList do
@@ -263,7 +250,6 @@ local MainGroupBox = Tabs.Main:AddLeftGroupbox("Main Settings", "boxes")
 
 MainGroupBox:AddToggle("EnabledToggle", {
 	Text = "Enabled",
-	Tooltip = "Master switch for the silent aim",
 	Default = SilentAimSettings.Enabled, 
 }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
 
@@ -273,7 +259,6 @@ end)
 
 MainGroupBox:AddToggle("TeamCheckToggle", {
 	Text = "Team Check",
-	Tooltip = "If enabled, won't target teammates.",
 	Default = SilentAimSettings.TeamCheck,
 })
 Toggles.TeamCheckToggle:OnChanged(function(Value)
@@ -282,7 +267,6 @@ end)
 
 MainGroupBox:AddToggle("VisibleCheckToggle", {
 	Text = "Visible Check",
-	Tooltip = "If enabled, only targets visible players.",
 	Default = SilentAimSettings.VisibleCheck,
 })
 Toggles.VisibleCheckToggle:OnChanged(function(Value)
@@ -293,7 +277,6 @@ MainGroupBox:AddDropdown("TargetPartDropdown", {
 	Values = {"Head", "HumanoidRootPart", "Random"},
 	Default = SilentAimSettings.TargetPart,
 	Text = "Target Part",
-	Tooltip = "Which body part to aim for.",
 })
 Options.TargetPartDropdown:OnChanged(function(Value)
 	SilentAimSettings.TargetPart = Value
@@ -325,8 +308,6 @@ Options.HitChanceSlider:OnChanged(function(Value)
     SilentAimSettings.HitChance = Value
 end)
 
-
--- 视觉效果区域
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
 
 VisualsGroupBox:AddToggle("FOVVisibleToggle", {
@@ -370,7 +351,6 @@ local PredictionGroupBox = Tabs.Main:AddRightGroupbox("Prediction")
 
 PredictionGroupBox:AddToggle("PredictionToggle", {
     Text = "Mouse.Hit/Target Prediction",
-    Tooltip = "Predicts movement for Mouse.Hit/Target method.",
     Default = SilentAimSettings.MouseHitPrediction,
 })
 Toggles.PredictionToggle:OnChanged(function(Value)
@@ -388,7 +368,6 @@ Options.PredictionAmountSlider:OnChanged(function(Value)
     SilentAimSettings.MouseHitPredictionAmount = Value
     PredictionAmount = Value
 end)
-
 
 resume(create(function()
     RenderStepped:Connect(function()
@@ -416,7 +395,6 @@ resume(create(function()
     end)
 end))
 
--- Hooks (核心逻辑 - 无需修改，它会读取 `SilentAimSettings` 表)
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
@@ -488,13 +466,12 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
     return oldIndex(self, Index)
 end))
 
-
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "MenuKeybind" }) -- 忽略菜单绑定键的保存
-SaveManager:SetFolder("UniversalSilentAim/Configs") -- 为新存档系统设置专用文件夹
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+SaveManager:SetFolder("UniversalSilentAim/Configs")
 
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
