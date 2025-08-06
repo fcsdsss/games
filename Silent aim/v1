@@ -199,8 +199,8 @@ local Options = Library.Options
 local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
-    Title = "Universal Silent Aim [UI Replaced]",
-    Footer = "version: raw_merge_indicator_fix",
+    Title = "Universal Silent Aim",
+    Footer = "改自一个pc子追开源库",
     Center = true,
     AutoShow = true
 })
