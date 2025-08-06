@@ -36,8 +36,6 @@ local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
 local GetPlayers = Players.GetPlayers
-local WorldToViewportPoint = Camera.WorldToViewportPoint
-local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
 local FindFirstChild = game.FindFirstChild
 local RenderStepped = RunService.RenderStepped
 local GetMouseLocation = UserInputService.GetMouseLocation
@@ -46,6 +44,7 @@ local resume = coroutine.resume
 local create = coroutine.create
 
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local currentTarget = nil
 
 local target_indicator = Drawing.new("Circle")
 target_indicator.Visible = false
@@ -108,7 +107,7 @@ local function IsPlayerVisible(Player)
     if targetPartName == "Random" then targetPartName = "HumanoidRootPart" end
     local PlayerRoot = FindFirstChild(PlayerCharacter, targetPartName) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
     if not PlayerRoot then return false end 
-    local _, obscuringObjects = GetPartsObscuringTarget(Camera, {PlayerRoot.Position}, {LocalPlayerCharacter, PlayerCharacter})
+    local _, obscuringObjects = Camera:GetPartsObscuringTarget({PlayerRoot.Position}, {LocalPlayerCharacter, PlayerCharacter})
     return #obscuringObjects == 0
 end
 
@@ -171,7 +170,7 @@ local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
 	Title = "Universal Silent Aim [UI Replaced]",
-	Footer = "version: final_plus",
+	Footer = "version: stable_performance_fix",
 	Center = true,
 	AutoShow = true
 })
@@ -237,33 +236,38 @@ Options.PredictionAmountSlider:OnChanged(function(Value) SilentAimSettings.Mouse
 
 resume(create(function()
     while RenderStepped:Wait() do
-        local closestPlayerPart = nil
         if SilentAimSettings.Enabled then
-            closestPlayerPart = getClosestPlayer()
+            currentTarget = getClosestPlayer()
+        else
+            currentTarget = nil
         end
 
-        if SilentAimSettings.ShowSilentAimTarget and closestPlayerPart then
-            local targetPos, onScreen = getPositionOnScreen(closestPlayerPart.Position)
-            target_indicator.Visible = onScreen
+        local showIndicator = SilentAimSettings.ShowSilentAimTarget and currentTarget
+        target_indicator.Visible = showIndicator
+        if showIndicator then
+            local targetPos, onScreen = getPositionOnScreen(currentTarget.Position)
             if onScreen then
+                target_indicator.Visible = true
                 target_indicator.Position = targetPos
                 target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
                 target_indicator.Color = Options.TargetIndicatorColorPicker.Value
+            else
+                target_indicator.Visible = false
             end
-        else
-            target_indicator.Visible = false
         end
         
-        if SilentAimSettings.ShowSnapline and closestPlayerPart then
-            local targetPos, onScreen = getPositionOnScreen(closestPlayerPart.Position)
-            snapline.Visible = onScreen
+        local showSnapline = SilentAimSettings.ShowSnapline and currentTarget
+        snapline.Visible = showSnapline
+        if showSnapline then
+            local targetPos, onScreen = getPositionOnScreen(currentTarget.Position)
             if onScreen then
+                snapline.Visible = true
                 snapline.From = Camera.ViewportSize / 2
                 snapline.To = targetPos
                 snapline.Color = Options.SnaplineColorPicker.Value
+            else
+                snapline.Visible = false
             end
-        else
-            snapline.Visible = false
         end
 
         fov_circle.Visible = SilentAimSettings.FOVVisible
@@ -285,33 +289,32 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Arguments = {...}
     local self = Arguments[1]
     
-    if SilentAimSettings.Enabled and self == workspace and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
+    if SilentAimSettings.Enabled and currentTarget and self == workspace and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
         local currentMethod = SilentAimSettings.SilentAimMethod
-        local HitPart = getClosestPlayer()
-        if HitPart then
-            if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
-                    local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
-                    return oldNamecall(unpack(Arguments))
-                end
-            elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
-                    local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
-                    return oldNamecall(unpack(Arguments))
-                end
-            elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
-                    local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
-                    return oldNamecall(unpack(Arguments))
-                end
-            elseif Method == "Raycast" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                    Arguments[3] = getDirection(Arguments[2], HitPart.Position)
-                    return oldNamecall(unpack(Arguments))
-                end
+        local HitPart = currentTarget
+        
+        if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                local A_Ray = Arguments[2]
+                Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                return oldNamecall(unpack(Arguments))
+            end
+        elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                local A_Ray = Arguments[2]
+                Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                return oldNamecall(unpack(Arguments))
+            end
+        elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                local A_Ray = Arguments[2]
+                Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                return oldNamecall(unpack(Arguments))
+            end
+        elseif Method == "Raycast" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                Arguments[3] = getDirection(Arguments[2], HitPart.Position)
+                return oldNamecall(unpack(Arguments))
             end
         end
     end
@@ -320,20 +323,18 @@ end))
 
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
-    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
-        local HitPart = getClosestPlayer()
-        if HitPart then
-            if Index == "Target" or Index == "target" then 
-                return HitPart
-            elseif Index == "Hit" or Index == "hit" then 
-                return (SilentAimSettings.MouseHitPrediction and (HitPart.CFrame + (HitPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or HitPart.CFrame
-            elseif Index == "X" or Index == "x" then 
-                return self.X 
-            elseif Index == "Y" or Index == "y" then 
-                return self.Y 
-            elseif Index == "UnitRay" then 
-                return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit)
-            end
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and currentTarget and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
+        local HitPart = currentTarget
+        if Index == "Target" or Index == "target" then 
+            return HitPart
+        elseif Index == "Hit" or Index == "hit" then 
+            return (SilentAimSettings.MouseHitPrediction and (HitPart.CFrame + (HitPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or HitPart.CFrame
+        elseif Index == "X" or Index == "x" then 
+            return self.X 
+        elseif Index == "Y" or Index == "y" then 
+            return self.Y 
+        elseif Index == "UnitRay" then 
+            return Ray.new(self.Origin, (HitPart.Position - self.Origin.p).Unit)
         end
     end
     return oldIndex(self, Index)
