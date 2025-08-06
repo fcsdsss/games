@@ -19,7 +19,8 @@ local SilentAimSettings = {
     ShowSilentAimTarget = false, 
     MouseHitPrediction = false,
     MouseHitPredictionAmount = 0.165,
-    HitChance = 100
+    HitChance = 100,
+    FixedFOV = false
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -191,7 +192,14 @@ end
 
 local function getClosestPlayer()
     local Closest = nil
-    local DistanceToMouse = SilentAimSettings.FOVRadius
+    local DistanceToAimPoint = SilentAimSettings.FOVRadius
+    local AimPoint
+    
+    if SilentAimSettings.FixedFOV then
+        AimPoint = Camera.ViewportSize / 2
+    else
+        AimPoint = getMousePosition()
+    end
 
     for _, Player in next, GetPlayers(Players) do
         if Player ~= LocalPlayer then
@@ -210,10 +218,10 @@ local function getClosestPlayer()
                             if PartToAim then
                                 local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
                                 if OnScreen then
-                                    local Distance = (getMousePosition() - ScreenPosition).Magnitude
-                                    if Distance <= DistanceToMouse then
+                                    local Distance = (AimPoint - ScreenPosition).Magnitude
+                                    if Distance <= DistanceToAimPoint then
                                         Closest = PartToAim
-                                        DistanceToMouse = Distance
+                                        DistanceToAimPoint = Distance
                                     end
                                 end
                             end
@@ -335,6 +343,14 @@ Options.FOVRadiusSlider:OnChanged(function(Value)
     fov_circle.Radius = Value
 end)
 
+VisualsGroupBox:AddToggle("FixedFOVToggle", {
+    Text = "Fixed FOV (for Mobile)",
+    Default = SilentAimSettings.FixedFOV,
+})
+Toggles.FixedFOVToggle:OnChanged(function(Value)
+    SilentAimSettings.FixedFOV = Value
+end)
+
 VisualsGroupBox:AddToggle("ShowTargetToggle", {
     Text = "Show Silent Aim Target",
     Default = SilentAimSettings.ShowSilentAimTarget,
@@ -390,7 +406,11 @@ resume(create(function()
         if fov_circle.Visible then
             fov_circle.Color = Options.FOVColorPicker.Value
             fov_circle.Radius = Options.FOVRadiusSlider.Value
-            fov_circle.Position = getMousePosition()
+            if Toggles.FixedFOVToggle.Value then
+                fov_circle.Position = Camera.ViewportSize / 2
+            else
+                fov_circle.Position = getMousePosition()
+            end
         end
     end)
 end))
