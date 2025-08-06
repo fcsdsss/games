@@ -1,0 +1,159 @@
+if getgenv().HowlSilent then return getgenv().ValiantAimHacks end
+
+local Workspace = game:GetService("Workspace")
+local Heartbeat = game:GetService("RunService").Heartbeat
+local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local CurrentCamera = game:GetService("Workspace").CurrentCamera
+
+getgenv().ValiantAimHacks = {
+    SilentAimEnabled = true,
+    ShowFOV = true,
+    VisibleCheck = true,
+    TeamCheck = true,
+    FOV = 15,
+    HitChance = 100,
+    Selected = LocalPlayer,
+    BlacklistedTeams = {
+        {
+            Team = LocalPlayer.Team,
+            TeamColor = LocalPlayer.TeamColor,
+        },
+    },
+    BlacklistedPlayers = {LocalPlayer},
+    WhitelistedPUIDs = {127207167},
+}
+
+local HowlSilent = getgenv().ValiantAimHacks
+
+local circle = Drawing.new("Circle")
+function HowlSilent.updateCircle()
+    if (circle) then
+        circle.Transparency = 1
+        circle.Visible = HowlSilent["ShowFOV"]
+        circle.Thickness = 2
+        circle.Color = Color3.fromRGB(0, 0, 0)
+        circle.NumSides = 12
+        circle.Radius = (HowlSilent["FOV"] * 6) / 2
+        circle.Filled = false
+        
+        local screenCenter = Vector2.new(CurrentCamera.ViewportSize.X / 2, CurrentCamera.ViewportSize.Y / 2)
+        circle.Position = screenCenter
+
+        return circle
+    end
+end
+
+setreadonly(math, false); math.chance = function(percentage) local percentage = math.floor(percentage); local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100)/100; return chance <= percentage/100 end; setreadonly(math, true);
+setreadonly(table, false); table.loopforeach = function(tbl, func) for index, value in pairs(tbl) do if type(value) == 'table' then table.loopforeach(value, func); elseif type(value) == 'function' then table.loopforeach(debug.getupvalues(value)); else func(index, value); end; end; end; setreadonly(table, true);
+
+function HowlSilent.isPartVisible(Part, PartDescendant)
+    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local Origin = CurrentCamera.CFrame.Position
+    local _, OnScreen = CurrentCamera:WorldToViewportPoint(Part.Position)
+
+    if (OnScreen) then
+        local newRay = Ray.new(Origin, Part.Position - Origin)
+        local PartHit, _ = Workspace:FindPartOnRayWithIgnoreList(newRay, {Character, CurrentCamera})
+        local Visible = (not PartHit or PartHit:IsDescendantOf(PartDescendant))
+
+        return Visible
+    end
+
+    return false
+end
+
+function HowlSilent.checkTeam(targetPlayerA, targetPlayerB)
+    if (targetPlayerA.Team ~= targetPlayerB.Team) then
+        for i = 1, #HowlSilent.BlacklistedTeams do
+            local v = HowlSilent.BlacklistedTeams[i]
+            if (targetPlayerA.Team ~= v.Team and targetPlayerA.TeamColor ~= v.TeamColor) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function HowlSilent.checkPlayer(targetPlayer)
+    for i = 1, #HowlSilent.BlacklistedPlayers do
+        local v = HowlSilent.BlacklistedPlayers[i]
+        if (v ~= targetPlayer) then
+            return true
+        end
+    end
+    return false
+end
+
+function HowlSilent.checkWhitelisted(targetPlayer)
+    for i = 1, #HowlSilent.WhitelistedPUIDs do
+        local v = HowlSilent.WhitelistedPUIDs[i]
+        if (targetPlayer.UserId == v) then
+            return true
+        end
+    end
+    return false
+end
+
+function HowlSilent.findDirectionNormalMaterial(Origin, Destination, UnitMultiplier)
+    if (typeof(Origin) == "Vector3" and typeof(Destination) == "Vector3") then
+        if (not UnitMultiplier) then UnitMultiplier = 1 end
+        local Direction = (Destination - Origin).Unit * UnitMultiplier
+        local RaycastResult = Workspace:Raycast(Origin, Direction)
+        if (RaycastResult ~= nil) then
+            local Normal = RaycastResult.Normal
+            local Material = RaycastResult.Material
+            return Direction, Normal, Material
+        end
+    end
+    return nil
+end
+
+function HowlSilent.checkSilentAim()
+    return (rawget(HowlSilent, "SilentAimEnabled") == true and rawget(HowlSilent, "Selected") ~= LocalPlayer)
+end
+
+function HowlSilent.getClosestPlayerToCursor()
+    local ClosestPlayer = nil
+    local Chance = math.chance(HowlSilent["HitChance"])
+    local ShortestDistance = 1/0
+
+    if (not Chance) then 
+        HowlSilent["Selected"] = LocalPlayer
+        return LocalPlayer
+    end
+    
+    local screenCenter = Vector2.new(CurrentCamera.ViewportSize.X / 2, CurrentCamera.ViewportSize.Y / 2)
+
+    local AllPlayers = Players:GetPlayers()
+    for i = 1, #AllPlayers do
+        local plr = AllPlayers[i]
+        if (not HowlSilent.checkWhitelisted(plr) and HowlSilent.checkPlayer(plr) and plr.Character and plr.Character.PrimaryPart and plr.Character:FindFirstChildWhichIsA("Humanoid") and plr.Character:FindFirstChildWhichIsA("Humanoid").Health > 0) then
+            if (HowlSilent["TeamCheck"] and not HowlSilent.checkTeam(plr, LocalPlayer)) then continue end
+
+            local PartPos, OnScreen = CurrentCamera:WorldToViewportPoint(plr.Character.PrimaryPart.Position)
+            if OnScreen then
+                local Magnitude = (Vector2.new(PartPos.X, PartPos.Y) - screenCenter).Magnitude
+
+                if (Magnitude < (HowlSilent["FOV"] * 6 - 8)) and (Magnitude < ShortestDistance) then
+                    if (HowlSilent["VisibleCheck"] and HowlSilent.isPartVisible(plr.Character.PrimaryPart, plr.Character)) or (not HowlSilent["VisibleCheck"]) then
+                        ClosestPlayer = plr
+                        ShortestDistance = Magnitude
+                    end
+                end
+            end
+        end
+    end
+
+    HowlSilent["Selected"] = (ClosestPlayer or LocalPlayer)
+    return (ClosestPlayer or LocalPlayer)
+end
+
+local HBFuncs = function()
+    HowlSilent.updateCircle()
+    HowlSilent.getClosestPlayerToCursor()
+end
+Heartbeat:Connect(HBFuncs)
+
+return HowlSilent
