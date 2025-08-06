@@ -23,7 +23,7 @@ local SilentAimSettings = {
     FixedFOV = false,
     TargetIndicatorRadius = 20,
     MaxDistance = 500,
-    ShowTracer = false
+    ShowTracer = false 
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -74,7 +74,6 @@ fov_circle.ZIndex = 999
 fov_circle.Transparency = 1
 fov_circle.Color = Color3.fromRGB(54, 57, 241)
 
---- [新增] 创建示踪线对象
 local tracer_line = Drawing.new("Line")
 tracer_line.Visible = false
 tracer_line.ZIndex = 998
@@ -238,11 +237,11 @@ Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistanc
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
 
 VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, }):AddColorPicker("FOVColorPicker", { Default = fov_circle.Color, Title = "FOV Circle Color" })
-Toggles.FOVVisibleToggle:OnChanged(function(Value) fov_circle.Visible = Value; SilentAimSettings.FOVVisible = Value end)
+Toggles.FOVVisibleToggle:OnChanged(function(Value) SilentAimSettings.FOVVisible = Value end)
 Options.FOVColorPicker:OnChanged(function(Value) fov_circle.Color = Value end)
 
 VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 })
-Options.FOVRadiusSlider:OnChanged(function(Value) fov_circle.Radius = Value; SilentAimSettings.FOVRadius = Value end)
+Options.FOVRadiusSlider:OnChanged(function(Value) SilentAimSettings.FOVRadius = Value end)
 
 VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "Fixed FOV (for Mobile)", Default = SilentAimSettings.FixedFOV, })
 Toggles.FixedFOVToggle:OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
@@ -254,7 +253,6 @@ Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator.Co
 VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "Indicator Size", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0})
 Options.TargetIndicatorRadiusSlider:OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
 
---- [新增] 添加示踪线的UI控件
 VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "Show Tracer", Default = SilentAimSettings.ShowTracer, }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "Tracer Color" })
 Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
 Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
@@ -271,40 +269,41 @@ Toggles.PredictionToggle:OnChanged(function(Value) SilentAimSettings.MouseHitPre
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 })
 Options.PredictionAmountSlider:OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
---- [修改] 重写渲染循环以包含示踪线逻辑
+--- [修改] 已修复并重构渲染循环逻辑
 resume(create(function()
     RenderStepped:Connect(function()
         local closestPlayerPart = getClosestPlayer()
-        local showIndicator = Toggles.ShowTargetToggle.Value and Toggles.EnabledToggle.Value and closestPlayerPart
-        local showTracer = Toggles.ShowTracerToggle.Value and Toggles.EnabledToggle.Value and closestPlayerPart
 
         -- 处理目标指示器
-        target_indicator.Visible = showIndicator
-        if showIndicator then
+        if Toggles.ShowTargetToggle.Value and Toggles.EnabledToggle.Value and closestPlayerPart then
             local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, closestPlayerPart.Position)
+            target_indicator.Visible = IsOnScreen
             if IsOnScreen then
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
-                target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
-            else
-                target_indicator.Visible = false
+                target_indicator.Radius = Options.TargetIndicatorRadiusSlider.Value
+                target_indicator.Color = Options.TargetIndicatorColorPicker.Value
             end
+        else
+            target_indicator.Visible = false
         end
 
         -- 处理示踪线
-        tracer_line.Visible = showTracer
-        if showTracer then
+        if Toggles.ShowTracerToggle.Value and Toggles.EnabledToggle.Value and closestPlayerPart then
             local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, closestPlayerPart.Position)
+            tracer_line.Visible = IsOnScreen
             if IsOnScreen then
                 tracer_line.From = Camera.ViewportSize / 2
                 tracer_line.To = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
-            else
-                tracer_line.Visible = false
+                tracer_line.Color = Options.TracerColorPicker.Value
+                tracer_line.Thickness = Options.TracerThicknessSlider.Value
             end
+        else
+            tracer_line.Visible = false
         end
-
-        -- 处理FOV圆
-        fov_circle.Visible = Toggles.FOVVisibleToggle.Value
-        if fov_circle.Visible then
+        
+        -- 处理FOV圈
+        if Toggles.FOVVisibleToggle.Value then
+            fov_circle.Visible = true
             fov_circle.Color = Options.FOVColorPicker.Value
             fov_circle.Radius = Options.FOVRadiusSlider.Value
             if Toggles.FixedFOVToggle.Value then
@@ -312,6 +311,8 @@ resume(create(function()
             else
                 fov_circle.Position = getMousePosition()
             end
+        else
+            fov_circle.Visible = false
         end
     end)
 end))
