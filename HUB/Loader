@@ -26,8 +26,7 @@ Window:CreateHomeTab({
 AnnouncementsTab:CreateSection("2025年8月5日 - 更新日志")
 AnnouncementsTab:CreateParagraph({
     Title = "8.5更新",
-    Text = "添加了GB脚本，更新了根深蒂固(添加自瞄)，更换黑曜石ui，
-添加mines矿井"
+    Text = "添加了GB脚本，更新了根深蒂固(添加自瞄)，更换黑曜石ui，添加mines矿井"
 })
 AnnouncementsTab:CreateDivider()
 
