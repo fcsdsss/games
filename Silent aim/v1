@@ -8,7 +8,6 @@ end
 
 local SilentAimSettings = {
     Enabled = false,
-    ClassName = "Universal Silent Aim - Averiias, Stefanuk12, xaxa",
     ToggleKey = "RightAlt",
     TeamCheck = false,
     VisibleCheck = false, 
@@ -26,34 +25,26 @@ local SilentAimSettings = {
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
-local MainFileName = "UniversalSilentAim"
-local SelectedFile, FileToSave = "", ""
 
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
-local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
-local GetChildren = game.GetChildren
 local GetPlayers = Players.GetPlayers
-local WorldToScreen = Camera.WorldToScreenPoint
 local WorldToViewportPoint = Camera.WorldToViewportPoint
 local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
 local FindFirstChild = game.FindFirstChild
 local RenderStepped = RunService.RenderStepped
-local GuiInset = GuiService.GetGuiInset
 local GetMouseLocation = UserInputService.GetMouseLocation
 
 local resume = coroutine.resume 
 local create = coroutine.create
 
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
-local PredictionAmount = 0.165
 
 local target_indicator = Drawing.new("Circle")
 target_indicator.Visible = false
@@ -81,29 +72,17 @@ local ExpectedArguments = {
 }
 
 function CalculateChance(Percentage)
-    Percentage = math.floor(Percentage)
-    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
-    return chance <= Percentage / 100
-end
-
-do 
-    if not isfolder(MainFileName) then 
-        makefolder(MainFileName);
-    end
-    
-    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then 
-        makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
-    end
+    return (math.random() * 100) <= Percentage
 end
 
 local function getPositionOnScreen(Vector)
-    local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+    local Vec3, OnScreen = Camera:WorldToScreenPoint(Vector)
     return Vector2.new(Vec3.X, Vec3.Y), OnScreen
 end
 
 local function ValidateArguments(Args, RayMethod)
-    local Matches = 0
     if #Args < RayMethod.ArgCountRequired then return false end
+    local Matches = 0
     for Pos, Argument in next, Args do
         if typeof(Argument) == RayMethod.Args[Pos] then Matches = Matches + 1 end
     end
@@ -112,10 +91,6 @@ end
 
 local function getDirection(Origin, Position)
     return (Position - Origin).Unit * 1000
-end
-
-local function getMousePosition()
-    return GetMouseLocation(UserInputService)
 end
 
 local function IsPlayerVisible(Player)
@@ -138,17 +113,19 @@ local function getClosestPlayer()
     if SilentAimSettings.FixedFOV then
         AimPoint = Camera.ViewportSize / 2
     else
-        AimPoint = getMousePosition()
+        AimPoint = GetMouseLocation(UserInputService)
     end
 
-    local LocalRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local LocalChar = LocalPlayer.Character
+    if not LocalChar then return nil end
+    local LocalRoot = FindFirstChild(LocalChar, "HumanoidRootPart")
     if not LocalRoot then return nil end
 
-    for _, Player in next, GetPlayers(Players) do
+    for _, Player in ipairs(GetPlayers(Players)) do
         if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
             local Character = Player.Character
             if Character then
-                local TargetRoot = Character:FindFirstChild("HumanoidRootPart")
+                local TargetRoot = FindFirstChild(Character, "HumanoidRootPart")
                 if TargetRoot and (TargetRoot.Position - LocalRoot.Position).Magnitude <= SilentAimSettings.MaxDistance then
                     if not (SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player)) then
                         local Humanoid = FindFirstChild(Character, "Humanoid")
@@ -162,7 +139,7 @@ local function getClosestPlayer()
                                 local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
                                 if OnScreen then
                                     local Distance = (AimPoint - ScreenPosition).Magnitude
-                                    if Distance <= DistanceToAimPoint then
+                                    if Distance < DistanceToAimPoint then
                                         Closest = PartToAim
                                         DistanceToAimPoint = Distance
                                     end
@@ -187,7 +164,7 @@ local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
 	Title = "Universal Silent Aim [UI Replaced]",
-	Footer = "version: final",
+	Footer = "version: stable_fix",
 	Center = true,
 	AutoShow = true
 })
@@ -220,15 +197,14 @@ Options.HitChanceSlider:OnChanged(function(Value) SilentAimSettings.HitChance = 
 MainGroupBox:AddSlider('MaxDistanceSlider', {Text = 'Max Distance', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "m"})
 Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
-
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
 
 VisualsGroupBox:AddToggle("FOVVisibleToggle", {Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible}):AddColorPicker("FOVColorPicker", { Default = fov_circle.Color, Title = "FOV Circle Color" })
-Toggles.FOVVisibleToggle:OnChanged(function(Value) fov_circle.Visible = Value; SilentAimSettings.FOVVisible = Value end)
+Toggles.FOVVisibleToggle:OnChanged(function(Value) SilentAimSettings.FOVVisible = Value end)
 Options.FOVColorPicker:OnChanged(function(Value) fov_circle.Color = Value end)
 
 VisualsGroupBox:AddSlider("FOVRadiusSlider", {Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0})
-Options.FOVRadiusSlider:OnChanged(function(Value) fov_circle.Radius = Value; SilentAimSettings.FOVRadius = Value end)
+Options.FOVRadiusSlider:OnChanged(function(Value) SilentAimSettings.FOVRadius = Value end)
 
 VisualsGroupBox:AddToggle("FixedFOVToggle", {Text = "Fixed FOV (for Mobile)", Default = SilentAimSettings.FixedFOV})
 Toggles.FixedFOVToggle:OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
@@ -240,7 +216,6 @@ Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator.Co
 VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", {Text = "Indicator Size", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0})
 Options.TargetIndicatorRadiusSlider:OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
 
-
 local PredictionGroupBox = Tabs.Main:AddRightGroupbox("Prediction")
 
 PredictionGroupBox:AddToggle("PredictionToggle", {Text = "Mouse.Hit/Target Prediction", Default = SilentAimSettings.MouseHitPrediction})
@@ -249,16 +224,15 @@ Toggles.PredictionToggle:OnChanged(function(Value) SilentAimSettings.MouseHitPre
 PredictionGroupBox:AddSlider("PredictionAmountSlider", {Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3})
 Options.PredictionAmountSlider:OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value end)
 
-
 resume(create(function()
-    RenderStepped:Connect(function()
-        if SilentAimSettings.ShowSilentAimTarget and SilentAimSettings.Enabled then
+    while RenderStepped:Wait() do
+        if SilentAimSettings.Enabled and SilentAimSettings.ShowSilentAimTarget then
             local closestPlayerPart = getClosestPlayer()
             if closestPlayerPart then 
-                local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, closestPlayerPart.Position)
+                local TargetPos, IsOnScreen = getPositionOnScreen(closestPlayerPart.Position)
                 target_indicator.Visible = IsOnScreen
                 if IsOnScreen then
-                    target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+                    target_indicator.Position = TargetPos
                     target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
                 end
             else 
@@ -270,13 +244,14 @@ resume(create(function()
         
         fov_circle.Visible = SilentAimSettings.FOVVisible
         if fov_circle.Visible then
+            fov_circle.Radius = SilentAimSettings.FOVRadius
             if SilentAimSettings.FixedFOV then
                 fov_circle.Position = Camera.ViewportSize / 2
             else
-                fov_circle.Position = getMousePosition()
+                fov_circle.Position = GetMouseLocation(UserInputService)
             end
         end
-    end)
+    end
 end))
 
 local oldNamecall
@@ -287,28 +262,38 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     
     if SilentAimSettings.Enabled and self == workspace and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
         local currentMethod = SilentAimSettings.SilentAimMethod
-        local HitPart = getClosestPlayer()
-        if HitPart then
-            if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+        
+        if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                local HitPart = getClosestPlayer()
+                if HitPart then
                     local A_Ray = Arguments[2]
                     Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
-            elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+            end
+        elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                local HitPart = getClosestPlayer()
+                if HitPart then
                     local A_Ray = Arguments[2]
                     Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
-            elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+            end
+        elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                local HitPart = getClosestPlayer()
+                if HitPart then
                     local A_Ray = Arguments[2]
                     Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
-            elseif Method == "Raycast" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+            end
+        elseif Method == "Raycast" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                local HitPart = getClosestPlayer()
+                if HitPart then
                     Arguments[3] = getDirection(Arguments[2], HitPart.Position)
                     return oldNamecall(unpack(Arguments))
                 end
@@ -332,7 +317,7 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
             elseif Index == "Y" or Index == "y" then 
                 return self.Y 
             elseif Index == "UnitRay" then 
-                return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
+                return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit)
             end
         end
     end
@@ -346,4 +331,4 @@ SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 SaveManager:SetFolder("UniversalSilentAim/Configs")
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
-SaveManager:LoadAutoloadConfig()```
+SaveManager:LoadAutoloadConfig()
