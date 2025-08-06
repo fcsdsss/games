@@ -157,7 +157,7 @@ ScriptsTab:CreateDivider()
 ScriptsTab:CreateSection("mines矿井")
 ScriptsTab:CreateParagraph({ Title = "介绍", Text = "一个脚本" })
 ScriptsTab:CreateLabel({ Text = "状态: 正常运行", Style = 2 })
-ScriptsTab:CreateButton({ Name = "加载矿井脚本", Callback = function() loadScript("mines脚本", "loadstring(game:HttpGet("https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/mines"))()") end })
+ScriptsTab:CreateButton({ Name = "加载矿井脚本", Callback = function() loadScript("mines脚本", "https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/mines") end })
 ScriptsTab:CreateDivider()
 
 SettingsTab:CreateSection("Hub 主题")
