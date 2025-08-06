@@ -1,251 +1,502 @@
-if not game:IsLoaded() then
-	game.Loaded:Wait()
+if not game:IsLoaded() then 
+    game.Loaded:Wait()
 end
 
 if not syn or not protectgui then
-	getgenv().protectgui = function() end
+    getgenv().protectgui = function() end
 end
 
+local SilentAimSettings = {
+    Enabled = false,
+    
+    ClassName = "Universal Silent Aim - Averiias, Stefanuk12, xaxa",
+    ToggleKey = "RightAlt",
+    
+    TeamCheck = false,
+    VisibleCheck = false, 
+    TargetPart = "HumanoidRootPart",
+    SilentAimMethod = "Raycast",
+    
+    FOVRadius = 130,
+    FOVVisible = false,
+    ShowSilentAimTarget = false, 
+    
+    MouseHitPrediction = false,
+    MouseHitPredictionAmount = 0.165,
+    HitChance = 100
+}
+
+getgenv().SilentAimSettings = SilentAimSettings -- 使用 getgenv() 以确保在整个脚本中可访问
+local MainFileName = "UniversalSilentAim"
+local SelectedFile, FileToSave = "", ""
+
+local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
 
-local FindFirstChild = game.FindFirstChild
+local GetChildren = game.GetChildren
 local GetPlayers = Players.GetPlayers
-local RenderStepped = RunService.RenderStepped
 local WorldToScreen = Camera.WorldToScreenPoint
 local WorldToViewportPoint = Camera.WorldToViewportPoint
-local getMousePosition = UserInputService.GetMouseLocation
+local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
+local FindFirstChild = game.FindFirstChild
+local RenderStepped = RunService.RenderStepped
+local GuiInset = GuiService.GetGuiInset
+local GetMouseLocation = UserInputService.GetMouseLocation
+
+local resume = coroutine.resume 
+local create = coroutine.create
+
+local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local PredictionAmount = 0.165
+
+local mouse_box = Drawing.new("Square")
+mouse_box.Visible = false
+mouse_box.ZIndex = 999 
+mouse_box.Color = Color3.fromRGB(54, 57, 241)
+mouse_box.Thickness = 20 
+mouse_box.Size = Vector2.new(20, 20)
+mouse_box.Filled = true 
+
+local fov_circle = Drawing.new("Circle")
+fov_circle.Thickness = 1
+fov_circle.NumSides = 100
+fov_circle.Radius = 180
+fov_circle.Filled = false
+fov_circle.Visible = false
+fov_circle.ZIndex = 999
+fov_circle.Transparency = 1
+fov_circle.Color = Color3.fromRGB(54, 57, 241)
+
+local ExpectedArguments = {
+    FindPartOnRayWithIgnoreList = {
+        ArgCountRequired = 3,
+        Args = {
+            "Instance", "Ray", "table", "boolean", "boolean"
+        }
+    },
+    FindPartOnRayWithWhitelist = {
+        ArgCountRequired = 3,
+        Args = {
+            "Instance", "Ray", "table", "boolean"
+        }
+    },
+    FindPartOnRay = {
+        ArgCountRequired = 2,
+        Args = {
+            "Instance", "Ray", "Instance", "boolean", "boolean"
+        }
+    },
+    Raycast = {
+        ArgCountRequired = 3,
+        Args = {
+            "Instance", "Vector3", "Vector3", "RaycastParams"
+        }
+    }
+}
+
+function CalculateChance(Percentage)
+    Percentage = math.floor(Percentage)
+    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
+    return chance <= Percentage / 100
+end
+
+--[[旧的文件处理逻辑 - 函数保留，但UI部分将被SaveManager替代]]
+do 
+    if not isfolder(MainFileName) then 
+        makefolder(MainFileName);
+    end
+    
+    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then 
+        makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
+    end
+end
+
+local Files = listfiles(string.format("%s/%s", "UniversalSilentAim", tostring(game.PlaceId)))
+
+local function GetFiles() -- credits to the linoria lib for this function
+	local out = {}
+    local filesList = listfiles(string.format("%s/%s", "UniversalSilentAim", tostring(game.PlaceId)))
+	for i = 1, #filesList do
+		local file = filesList[i]
+		if file:sub(-4) == '.lua' then
+			local pos = file:find('.lua', 1, true)
+			local start = pos
+			local char = file:sub(pos, pos)
+			while char ~= '/' and char ~= '\\' and char ~= '' do
+				pos = pos - 1
+				char = file:sub(pos, pos)
+			end
+			if char == '/' or char == '\\' then
+				table.insert(out, file:sub(pos + 1, start - 1))
+			end
+		end
+	end
+	return out
+end
+
+local function UpdateFile(FileName)
+    assert(FileName or FileName == "string", "oopsies");
+    writefile(string.format("%s/%s/%s.lua", MainFileName, tostring(game.PlaceId), FileName), HttpService:JSONEncode(SilentAimSettings))
+end
+
+local function LoadFile(FileName)
+    assert(FileName or FileName == "string", "oopsies");
+    local File = string.format("%s/%s/%s.lua", MainFileName, tostring(game.PlaceId), FileName)
+    if isfile(File) then
+        local ConfigData = HttpService:JSONDecode(readfile(File))
+        for Index, Value in next, ConfigData do
+            SilentAimSettings[Index] = Value
+        end
+    end
+end
+
+local function getPositionOnScreen(Vector)
+    local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+    return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+end
+
+local function ValidateArguments(Args, RayMethod)
+    local Matches = 0
+    if #Args < RayMethod.ArgCountRequired then
+        return false
+    end
+    for Pos, Argument in next, Args do
+        if typeof(Argument) == RayMethod.Args[Pos] then
+            Matches = Matches + 1
+        end
+    end
+    return Matches >= RayMethod.ArgCountRequired
+end
+
+local function getDirection(Origin, Position)
+    return (Position - Origin).Unit * 1000
+end
+
+local function getMousePosition()
+    return GetMouseLocation(UserInputService)
+end
+
+local function IsPlayerVisible(Player)
+    local PlayerCharacter = Player.Character
+    local LocalPlayerCharacter = LocalPlayer.Character
+    
+    if not (PlayerCharacter and LocalPlayerCharacter) then return end 
+    
+    local targetPartName = SilentAimSettings.TargetPart
+    if targetPartName == "Random" then targetPartName = "HumanoidRootPart" end
+    
+    local PlayerRoot = FindFirstChild(PlayerCharacter, targetPartName) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
+    
+    if not PlayerRoot then return end 
+    
+    local CastPoints, IgnoreList = {PlayerRoot.Position, LocalPlayerCharacter, PlayerCharacter}, {LocalPlayerCharacter, PlayerCharacter}
+    local ObscuringObjects = #GetPartsObscuringTarget(Camera, CastPoints, IgnoreList)
+    
+    return ((ObscuringObjects == 0 and true) or (ObscuringObjects > 0 and false))
+end
+
+local function getClosestPlayer()
+    local Closest = nil
+    local DistanceToMouse = SilentAimSettings.FOVRadius
+
+    for _, Player in next, GetPlayers(Players) do
+        if Player ~= LocalPlayer then
+            if not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
+                local Character = Player.Character
+                if Character then
+                    if not (SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player)) then
+                        local Humanoid = FindFirstChild(Character, "Humanoid")
+                        if Humanoid and Humanoid.Health > 0 then
+                            local TargetPartName = SilentAimSettings.TargetPart
+                            local PartToAim = FindFirstChild(Character, TargetPartName)
+                            if TargetPartName == "Random" then
+                                PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+                            end
+                            
+                            if PartToAim then
+                                local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
+                                if OnScreen then
+                                    local Distance = (getMousePosition() - ScreenPosition).Magnitude
+                                    if Distance <= DistanceToMouse then
+                                        Closest = PartToAim
+                                        DistanceToMouse = Distance
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return Closest
+end
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
-Library.ShowToggleFrameInKeybinds = true
-
-local Toggles = Library.Toggles
 local Options = Library.Options
-
-local PredictionAmount = 0.165 -- 将由滑块控制
-local ValidTargetParts = { "头", "HumanoidRootPart" }
-
-local ExpectedArguments = {
-	FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = { "Instance", "Ray", "table", "boolean", "boolean" } },
-	FindPartOnRayWithWhitelist = { ArgCountRequired = 3, Args = { "Instance", "Ray", "table", "boolean" } },
-	FindPartOnRay = { ArgCountRequired = 2, Args = { "Instance", "Ray", "Instance", "boolean", "boolean" } },
-	Raycast = { ArgCountRequired = 3, Args = { "Instance", "Vector3", "Vector3", "RaycastParams" } },
-}
-
---// 辅助函数
-local function getDirection(Origin, Position)
-	return (Position - Origin).Unit * 1000
-end
-
-local function getPositionOnScreen(Vector)
-	local Vec3, OnScreen = WorldToScreen(Camera, Vector)
-	return Vector2.new(Vec3.X, Vec3.Y), OnScreen
-end
-
-local function IsPlayerVisible(Player)
-	local PlayerCharacter = Player.Character
-	local LocalPlayerCharacter = LocalPlayer.Character
-	if not (PlayerCharacter and LocalPlayerCharacter) then return false end
-
-	local targetPartName = Options.TargetPart.Value
-	if targetPartName == "头" then targetPartName = "Head" end -- 内部名称转换
-	local PlayerRoot = FindFirstChild(PlayerCharacter, targetPartName) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
-	if not PlayerRoot then return false end
-
-	local CastPoints = { PlayerRoot.Position, LocalPlayerCharacter.PrimaryPart.Position }
-	local IgnoreList = { LocalPlayerCharacter, PlayerCharacter }
-	return #Camera:GetPartsObscuringTarget(CastPoints, IgnoreList) == 0
-end
-
-local function CalculateChance(Percentage)
-	return math.random() <= Percentage / 100
-end
-
-local function ValidateArguments(Args, RayMethod)
-	if #Args < RayMethod.ArgCountRequired then return false end
-	for Pos, Argument in ipairs(Args) do
-		if typeof(Argument) ~= RayMethod.Args[Pos] then return false end
-	end
-	return true
-end
-
---// 主要目标获取函数
-local function getClosestPlayer()
-	local ClosestPlayerPart
-	local ClosestDistance = Options.FOVRadius.Value
-
-	for _, Player in ipairs(GetPlayers(Players)) do
-		if Player ~= LocalPlayer and (not Toggles.TeamCheck.Value or Player.Team ~= LocalPlayer.Team) then
-			local Character = Player.Character
-			if Character then
-				local Humanoid = FindFirstChild(Character, "Humanoid")
-				if Humanoid and Humanoid.Health > 0 and (not Toggles.VisibleCheck.Value or IsPlayerVisible(Player)) then
-					local targetPartValue = Options.TargetPart.Value
-					local targetPartName = targetPartValue
-					if targetPartValue == "头" then targetPartName = "Head" end
-
-					local TargetPart = (targetPartValue == "随机" and (Character[ValidTargetParts[math.random(1, #ValidTargetParts)]])) or FindFirstChild(Character, targetPartName)
-
-					if TargetPart then
-						local ScreenPosition, OnScreen = getPositionOnScreen(TargetPart.Position)
-						if OnScreen then
-							local Distance = (getMousePosition() - ScreenPosition).Magnitude
-							if Distance < ClosestDistance then
-								ClosestDistance = Distance
-								ClosestPlayerPart = TargetPart
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-	return ClosestPlayerPart
-end
+local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
-	Title = "通用静默自瞄",
-	Footer = "优化",
-	NotifySide = "Right",
+	Title = "Universal Silent Aim [UI Replaced]",
+	Footer = "version: raw_merge",
 	Center = true,
-	AutoShow = true,
+	AutoShow = true
 })
 
 local Tabs = {
-	Aim = Window:AddTab("自瞄", "crosshair"),
-	Visuals = Window:AddTab("视觉", "eye"),
-	Settings = Window:AddTab("设置", "settings"),
+	Main = Window:AddTab("Main", "user"),
+	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
 
-local MainGroup = Tabs.Aim:AddLeftGroupbox("主要功能")
-MainGroup:AddToggle("Enabled", { Text = "启用静默自瞄", Default = false })
-	:AddKeyPicker("AimKeybind", { Default = "RightAlt", Mode = "Toggle", SyncToggleState = true, Text = "启用/禁用自瞄" })
+local MainGroupBox = Tabs.Main:AddLeftGroupbox("Main Settings", "boxes")
 
-MainGroup:AddToggle("TeamCheck", { Text = "队伍检测 (不打队友)", Default = false })
-MainGroup:AddToggle("VisibleCheck", { Text = "可见性检测 (不打墙后)", Default = false })
-MainGroup:AddSlider("HitChance", { Text = "命中率", Default = 100, Min = 0, Max = 100, Rounding = 0, Suffix = "%" })
+MainGroupBox:AddToggle("EnabledToggle", {
+	Text = "Enabled",
+	Tooltip = "Master switch for the silent aim",
+	Default = SilentAimSettings.Enabled, 
+}):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
 
-local TargetingGroup = Tabs.Aim:AddRightGroupbox("目标选择")
-TargetingGroup:AddDropdown("TargetPart", { Text = "目标部位", Values = { "头", "HumanoidRootPart", "随机" }, Default = "HumanoidRootPart" })
-TargetingGroup:AddDropdown("SilentAimMethod", {
-	Text = "自瞄方法",
-	Values = { "Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target" },
-	Default = "Raycast",
-	Tooltip = "推荐 'Raycast'！'Mouse.Hit/Target' 模式可能干扰镜头移动！",
+Toggles.EnabledToggle:OnChanged(function(Value)
+	SilentAimSettings.Enabled = Value
+end)
+
+MainGroupBox:AddToggle("TeamCheckToggle", {
+	Text = "Team Check",
+	Tooltip = "If enabled, won't target teammates.",
+	Default = SilentAimSettings.TeamCheck,
 })
+Toggles.TeamCheckToggle:OnChanged(function(Value)
+	SilentAimSettings.TeamCheck = Value
+end)
 
-local PredictionGroup = Tabs.Aim:AddRightGroupbox("移动预判")
-PredictionGroup:AddToggle("MouseHitPrediction", { Text = "启用移动预判", Default = false, Tooltip = "仅在自瞄方法为 'Mouse.Hit/Target' 时生效" })
-PredictionGroup:AddSlider("MouseHitPredictionAmount", { Text = "预判强度", Min = 0.1, Max = 0.5, Default = 0.165, Rounding = 3 })
-Options.MouseHitPredictionAmount:OnChanged(function(val) PredictionAmount = val end)
+MainGroupBox:AddToggle("VisibleCheckToggle", {
+	Text = "Visible Check",
+	Tooltip = "If enabled, only targets visible players.",
+	Default = SilentAimSettings.VisibleCheck,
+})
+Toggles.VisibleCheckToggle:OnChanged(function(Value)
+	SilentAimSettings.VisibleCheck = Value
+end)
 
---// 视觉标签页
-local FOVGroup = Tabs.Visuals:AddLeftGroupbox("范围圈 (FOV)")
-FOVGroup:AddToggle("FOVVisible", { Text = "显示范围圈", Default = false })
-	:AddColorPicker("FOVColor", { Default = Color3.fromRGB(255, 255, 255), Transparency = 0.5 })
-FOVGroup:AddSlider("FOVRadius", { Text = "范围圈半径", Min = 10, Max = 800, Default = 130, Rounding = 0 })
+MainGroupBox:AddDropdown("TargetPartDropdown", {
+	Values = {"Head", "HumanoidRootPart", "Random"},
+	Default = SilentAimSettings.TargetPart,
+	Text = "Target Part",
+	Tooltip = "Which body part to aim for.",
+})
+Options.TargetPartDropdown:OnChanged(function(Value)
+	SilentAimSettings.TargetPart = Value
+end)
 
-local TargetVisGroup = Tabs.Visuals:AddLeftGroupbox("目标")
-TargetVisGroup:AddToggle("ShowSilentAimTarget", { Text = "显示目标方框", Default = false })
-	:AddColorPicker("TargetColor", { Default = Color3.fromRGB(255, 0, 0) })
+MainGroupBox:AddDropdown("MethodDropdown", {
+    Text = "Silent Aim Method", 
+    Default = SilentAimSettings.SilentAimMethod, 
+    Values = {
+        "Raycast","FindPartOnRay",
+        "FindPartOnRayWithWhitelist",
+        "FindPartOnRayWithIgnoreList",
+        "Mouse.Hit/Target"
+    }
+})
+Options.MethodDropdown:OnChanged(function(Value)
+    SilentAimSettings.SilentAimMethod = Value
+end)
 
-local MenuSettings = Tabs.Settings:AddLeftGroupbox("菜单")
-MenuSettings:AddLabel("菜单开关按键"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true })
-Library.ToggleKeybind = Options.MenuKeybind
-MenuSettings:AddButton("卸载脚本", function() Library:Unload() end)
+MainGroupBox:AddSlider('HitChanceSlider', {
+    Text = 'Hit chance',
+    Default = SilentAimSettings.HitChance,
+    Min = 0,
+    Max = 100,
+    Rounding = 1,
+    Suffix = "%"
+})
+Options.HitChanceSlider:OnChanged(function(Value)
+    SilentAimSettings.HitChance = Value
+end)
+
+
+-- 视觉效果区域
+local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
+
+VisualsGroupBox:AddToggle("FOVVisibleToggle", {
+    Text = "Show FOV Circle",
+    Default = SilentAimSettings.FOVVisible,
+}):AddColorPicker("FOVColorPicker", { Default = fov_circle.Color, Title = "FOV Circle Color" })
+
+Toggles.FOVVisibleToggle:OnChanged(function(Value)
+    SilentAimSettings.FOVVisible = Value
+    fov_circle.Visible = Value
+end)
+Options.FOVColorPicker:OnChanged(function(Value)
+    fov_circle.Color = Value
+end)
+
+VisualsGroupBox:AddSlider("FOVRadiusSlider", {
+    Text = "FOV Circle Radius",
+    Min = 10,
+    Max = 1000,
+    Default = SilentAimSettings.FOVRadius,
+    Rounding = 0
+})
+Options.FOVRadiusSlider:OnChanged(function(Value)
+    SilentAimSettings.FOVRadius = Value
+    fov_circle.Radius = Value
+end)
+
+VisualsGroupBox:AddToggle("ShowTargetToggle", {
+    Text = "Show Silent Aim Target",
+    Default = SilentAimSettings.ShowSilentAimTarget,
+}):AddColorPicker("TargetBoxColorPicker", { Default = mouse_box.Color, Title = "Target Box Color" })
+
+Toggles.ShowTargetToggle:OnChanged(function(Value)
+    SilentAimSettings.ShowSilentAimTarget = Value
+end)
+Options.TargetBoxColorPicker:OnChanged(function(Value)
+    mouse_box.Color = Value
+end)
+
+local PredictionGroupBox = Tabs.Main:AddRightGroupbox("Prediction")
+
+PredictionGroupBox:AddToggle("PredictionToggle", {
+    Text = "Mouse.Hit/Target Prediction",
+    Tooltip = "Predicts movement for Mouse.Hit/Target method.",
+    Default = SilentAimSettings.MouseHitPrediction,
+})
+Toggles.PredictionToggle:OnChanged(function(Value)
+    SilentAimSettings.MouseHitPrediction = Value
+end)
+
+PredictionGroupBox:AddSlider("PredictionAmountSlider", {
+    Text = "Prediction Amount",
+    Min = 0,
+    Max = 1,
+    Default = SilentAimSettings.MouseHitPredictionAmount,
+    Rounding = 3
+})
+Options.PredictionAmountSlider:OnChanged(function(Value)
+    SilentAimSettings.MouseHitPredictionAmount = Value
+    PredictionAmount = Value
+end)
+
+
+resume(create(function()
+    RenderStepped:Connect(function()
+        if Toggles.ShowTargetToggle.Value and Toggles.EnabledToggle.Value then
+            local closestPlayerPart = getClosestPlayer()
+            if closestPlayerPart then 
+                local Root = closestPlayerPart.Parent.PrimaryPart or closestPlayerPart
+                local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, Root.Position)
+                
+                mouse_box.Visible = IsOnScreen
+                mouse_box.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+            else 
+                mouse_box.Visible = false 
+            end
+        else
+            mouse_box.Visible = false
+        end
+        
+        fov_circle.Visible = Toggles.FOVVisibleToggle.Value
+        if fov_circle.Visible then
+            fov_circle.Color = Options.FOVColorPicker.Value
+            fov_circle.Radius = Options.FOVRadiusSlider.Value
+            fov_circle.Position = getMousePosition()
+        end
+    end)
+end))
+
+-- Hooks (核心逻辑 - 无需修改，它会读取 `SilentAimSettings` 表)
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    local Method = getnamecallmethod()
+    local Arguments = {...}
+    local self = Arguments[1]
+    
+    if SilentAimSettings.Enabled and self == workspace and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
+        local currentMethod = SilentAimSettings.SilentAimMethod
+        
+        if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                local A_Ray = Arguments[2]
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        elseif Method == "Raycast" and currentMethod == Method then
+            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                local HitPart = getClosestPlayer()
+                if HitPart then
+                    Arguments[3] = getDirection(Arguments[2], HitPart.Position)
+                    return oldNamecall(unpack(Arguments))
+                end
+            end
+        end
+    end
+    return oldNamecall(...)
+end))
+
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
+        local HitPart = getClosestPlayer()
+        if HitPart then
+            if Index == "Target" or Index == "target" then 
+                return HitPart
+            elseif Index == "Hit" or Index == "hit" then 
+                return (SilentAimSettings.MouseHitPrediction and (HitPart.CFrame + (HitPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or HitPart.CFrame
+            elseif Index == "X" or Index == "x" then 
+                return self.X 
+            elseif Index == "Y" or Index == "y" then 
+                return self.Y 
+            elseif Index == "UnitRay" then 
+                return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
+            end
+        end
+    end
+
+    return oldIndex(self, Index)
+end))
+
 
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
+
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-SaveManager:SetFolder("UniversalSilentAim/Configs_CN")
-SaveManager:BuildConfigSection(Tabs.Settings)
-ThemeManager:ApplyToTab(Tabs.Settings)
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" }) -- 忽略菜单绑定键的保存
+SaveManager:SetFolder("UniversalSilentAim/Configs") -- 为新存档系统设置专用文件夹
+
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+
 SaveManager:LoadAutoloadConfig()
-
---// 创建绘制对象
-local fov_circle = Drawing.new("Circle")
-fov_circle.Thickness = 1
-fov_circle.NumSides = 64
-fov_circle.Filled = false
-fov_circle.ZIndex = 9999
-
-local target_box = Drawing.new("Square")
-target_box.Thickness = 2
-target_box.Filled = false
-target_box.ZIndex = 9999
-target_box.Size = Vector2.new(12, 12)
-
-RenderStepped:Connect(function()
-	fov_circle.Visible = Toggles.FOVVisible.Value
-	if fov_circle.Visible then
-		fov_circle.Radius = Options.FOVRadius.Value
-		fov_circle.Color = Options.FOVColor.Value
-		fov_circle.Transparency = 1 - Options.FOVColor.Transparency -- UI库透明度与Drawing相反
-		fov_circle.Position = getMousePosition()
-	end
-
-	-- 目标方框
-	local target = getClosestPlayer()
-	target_box.Visible = Toggles.ShowSilentAimTarget.Value and Toggles.Enabled.Value and target
-	if target_box.Visible then
-		local TargetRoot = target.Parent:FindFirstChild("HumanoidRootPart") or target
-		local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, TargetRoot.Position)
-		target_box.Visible = IsOnScreen
-		if IsOnScreen then
-			target_box.Position = Vector2.new(RootToViewportPoint.X - 6, RootToViewportPoint.Y - 6) -- 居中方框
-			target_box.Color = Options.TargetColor.Value
-		end
-	end
-end)
-
---// 核心逻辑挂钩 (Hooks)
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(...)
-	local method = getnamecallmethod()
-	local args = { ... }
-	local self = args[1]
-	if Toggles.Enabled.Value and self == workspace and not checkcaller() and CalculateChance(Options.HitChance.Value) then
-		local silentAimMethod = Options.SilentAimMethod.Value
-		local targetPart = getClosestPlayer()
-		if targetPart then
-			if method == silentAimMethod and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist") then
-				local ray = args[2]
-				args[2] = Ray.new(ray.Origin, getDirection(ray.Origin, targetPart.Position))
-				return oldNamecall(unpack(args))
-			elseif method == "Raycast" and silentAimMethod == "Raycast" then
-				args[3] = getDirection(args[2], targetPart.Position)
-				return oldNamecall(unpack(args))
-			end
-		end
-	end
-	return oldNamecall(...)
-end)
-
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", function(self, index)
-	if Toggles.Enabled.Value and self == Mouse and not checkcaller() and Options.SilentAimMethod.Value == "Mouse.Hit/Target" then
-		local targetPart = getClosestPlayer()
-		if targetPart then
-			local lower_index = index:lower()
-			if lower_index == "target" then
-				return targetPart
-			elseif lower_index == "hit" then
-				return Toggles.MouseHitPrediction.Value and (targetPart.CFrame + (targetPart.Velocity * PredictionAmount)) or targetPart.CFrame
-			elseif lower_index == "unitray" then
-				return Ray.new(self.Origin, (targetPart.Position - self.Origin.Position).Unit)
-			end
-		end
-	end
-	return oldIndex(self, index)
-end)
