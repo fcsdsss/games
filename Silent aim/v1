@@ -1,7 +1,21 @@
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+local Library, ThemeManager, SaveManager
+
+local success, result = pcall(function()
+    local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+    Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+    ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+    SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+end)
+
+if not success then
+    warn("Obsidian UI Library failed to load. The script cannot continue. Error:", result)
+    return
+end
+
+if not Library then
+    warn("Obsidian UI Library is nil after loading. The script cannot continue.")
+    return
+end
 
 local Options = Library.Options
 local Toggles = Library.Toggles
@@ -20,25 +34,22 @@ local SilentAimSettings = {
     HitChance = 100
 }
 
+-- Corrected this line
+getgenv().SilentAimSettings = SilentAimSettings
+
 -- // Core Services & Variables
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
 -- // Helper Functions
 local GetPlayers = Players.GetPlayers
 local WorldToScreen = Camera.WorldToScreenPoint
-local WorldToViewportPoint = Camera.WorldToViewportPoint
-local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
-local FindFirstChild = game.FindFirstChild
 local RenderStepped = RunService.RenderStepped
-
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
-local PredictionAmount = 0.165
+local PredictionAmount = SilentAimSettings.MouseHitPredictionAmount
 
 -- // Drawing Objects for Visuals
 local fov_circle = Drawing.new("Circle")
@@ -61,9 +72,7 @@ mouse_box.Filled = false
 
 -- // Core Logic Functions
 function CalculateChance(Percentage)
-    Percentage = math.floor(Percentage)
-    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
-    return chance <= Percentage / 100
+    return math.random() <= (Percentage / 100)
 end
 
 local function getPositionOnScreen(Vector)
@@ -72,7 +81,7 @@ local function getPositionOnScreen(Vector)
 end
 
 local function getDirection(Origin, Position)
-    return (Position - Origin).Unit * 2000 -- Increased range
+    return (Position - Origin).Unit * 2000
 end
 
 local function getAimingPosition()
@@ -80,14 +89,11 @@ local function getAimingPosition()
 end
 
 local function IsPlayerVisible(Player)
-    local PlayerCharacter = Player.Character
-    local LocalPlayerCharacter = LocalPlayer.Character
-    if not (PlayerCharacter and LocalPlayerCharacter) then return false end
+    if not (Player and Player.Character and LocalPlayer.Character) then return false end
+    local TargetPart = Player.Character:FindFirstChild(SilentAimSettings.TargetPart) or Player.Character:FindFirstChild("HumanoidRootPart")
+    if not TargetPart then return false end
     
-    local PlayerRoot = FindFirstChild(PlayerCharacter, SilentAimSettings.TargetPart) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
-    if not PlayerRoot then return false end
-    
-    local _, ObscuringObjects = Camera:GetPartsObscuringTarget({PlayerRoot.Position}, {LocalPlayerCharacter, PlayerCharacter})
+    local _, ObscuringObjects = Camera:GetPartsObscuringTarget({TargetPart.Position}, {LocalPlayer.Character, Player.Character})
     return #ObscuringObjects == 0
 end
 
@@ -96,23 +102,19 @@ local function getClosestPlayer()
     local ClosestDistance = SilentAimSettings.FOVRadius
     local AimingPosition = getAimingPosition()
 
-    for _, Player in next, GetPlayers(Players) do
-        if Player ~= LocalPlayer and Player.Character then
+    for _, Player in ipairs(GetPlayers(Players)) do
+        if Player ~= LocalPlayer and Player.Character and Player.Character.PrimaryPart and Player.Character:FindFirstChild("Humanoid") and Player.Character.Humanoid.Health > 0 then
             if not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
-                local Character = Player.Character
-                local Humanoid = FindFirstChild(Character, "Humanoid")
-                if Humanoid and Humanoid.Health > 0 then
-                    if not (SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player)) then
-                        local TargetPartName = (SilentAimSettings.TargetPart == "Random" and ValidTargetParts[math.random(1, #ValidTargetParts)]) or SilentAimSettings.TargetPart
-                        local TargetPart = FindFirstChild(Character, TargetPartName)
-                        if TargetPart then
-                            local ScreenPosition, OnScreen = getPositionOnScreen(TargetPart.Position)
-                            if OnScreen then
-                                local Distance = (AimingPosition - ScreenPosition).Magnitude
-                                if Distance < ClosestDistance then
-                                    ClosestDistance = Distance
-                                    ClosestPlayerPart = TargetPart
-                                end
+                if not (SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player)) then
+                    local TargetPartName = (SilentAimSettings.TargetPart == "Random" and ValidTargetParts[math.random(1, #ValidTargetParts)]) or SilentAimSettings.TargetPart
+                    local TargetPart = Player.Character:FindFirstChild(TargetPartName)
+                    if TargetPart then
+                        local ScreenPosition, OnScreen = getPositionOnScreen(TargetPart.Position)
+                        if OnScreen then
+                            local Distance = (AimingPosition - ScreenPosition).Magnitude
+                            if Distance < ClosestDistance then
+                                ClosestDistance = Distance
+                                ClosestPlayerPart = TargetPart
                             end
                         end
                     end
@@ -123,11 +125,10 @@ local function getClosestPlayer()
     return ClosestPlayerPart
 end
 
-
 local Window = Library:CreateWindow({
 	Title = "Universal Silent Aim",
-	Footer = "v3.0 (Mobile Adapted)",
-	Icon = 4483362458, -- Crosshair icon
+	Footer = "v3.1 (Robust)",
+	Icon = 4483362458,
 	NotifySide = "Right",
 	ShowCustomCursor = true,
 })
@@ -138,178 +139,86 @@ local Tabs = {
 	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
 
--- // Silent Aim Tab
 local MainSettings = Tabs.SilentAim:AddLeftGroupbox("Main Settings")
-
-MainSettings:AddToggle("SA_Enabled", {
-    Text = "Enable Silent Aim",
-    Default = SilentAimSettings.Enabled,
-    Tooltip = "Master switch for the entire script."
-})
-
-MainSettings:AddToggle("SA_TeamCheck", {
-    Text = "Team Check",
-    Default = SilentAimSettings.TeamCheck,
-    Tooltip = "Avoids targeting your teammates."
-})
-
-MainSettings:AddToggle("SA_VisibleCheck", {
-    Text = "Visible Check",
-    Default = SilentAimSettings.VisibleCheck,
-    Tooltip = "Only targets players you can see (not through walls)."
-})
-
-MainSettings:AddToggle("SA_Prediction", {
-    Text = "Mouse.Hit Prediction",
-    Default = SilentAimSettings.MouseHitPrediction,
-    Tooltip = "Predicts player movement for the Mouse.Hit method."
-})
+MainSettings:AddToggle("SA_Enabled", {Text = "Enable Silent Aim", Default = SilentAimSettings.Enabled})
+MainSettings:AddToggle("SA_TeamCheck", {Text = "Team Check", Default = SilentAimSettings.TeamCheck})
+MainSettings:AddToggle("SA_VisibleCheck", {Text = "Visible Check", Default = SilentAimSettings.VisibleCheck})
+MainSettings:AddToggle("SA_Prediction", {Text = "Mouse.Hit Prediction", Default = SilentAimSettings.MouseHitPrediction})
 
 local MethodSettings = Tabs.SilentAim:AddRightGroupbox("Method")
+MethodSettings:AddDropdown("SA_TargetPart", {Text = "Target Part", Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart})
+MethodSettings:AddDropdown("SA_Method", {Text = "Aim Method", Values = {"Raycast", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"}, Default = SilentAimSettings.SilentAimMethod})
+MethodSettings:AddSlider("SA_HitChance", {Text = "Hit Chance", Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%"})
+MethodSettings:AddSlider("SA_PredictionAmount", {Text = "Prediction Amount", Default = SilentAimSettings.MouseHitPredictionAmount, Min = 0, Max = 1, Rounding = 3})
 
-MethodSettings:AddDropdown("SA_TargetPart", {
-    Text = "Target Part",
-    Values = {"Head", "HumanoidRootPart", "Random"},
-    Default = SilentAimSettings.TargetPart
-})
-
-MethodSettings:AddDropdown("SA_Method", {
-    Text = "Aim Method",
-    Values = {"Raycast", "FindPartOnRayWithIgnoreList", "Mouse.Hit/Target"},
-    Default = SilentAimSettings.SilentAimMethod
-})
-
-MethodSettings:AddSlider("SA_HitChance", {
-    Text = "Hit Chance",
-    Default = SilentAimSettings.HitChance,
-    Min = 0, Max = 100, Rounding = 1, Suffix = "%"
-})
-
-MethodSettings:AddSlider("SA_PredictionAmount", {
-    Text = "Prediction Amount",
-    Default = SilentAimSettings.MouseHitPredictionAmount,
-    Min = 0, Max = 1, Rounding = 3
-})
-
--- // Visuals Tab
 local FOVSettings = Tabs.Visuals:AddLeftGroupbox("Field of View (FOV)")
-
-FOVSettings:AddToggle("SA_FOVVisible", {
-    Text = "Show FOV Circle",
-    Default = SilentAimSettings.FOVVisible,
-    Tooltip = "Shows a circle around your aim area."
-}):AddColorPicker("SA_FOVColor", { Default = fov_circle.Color, Title = "FOV Color" })
-
-FOVSettings:AddSlider("SA_FOV", {
-    Text = "FOV Radius",
-    Default = SilentAimSettings.FOVRadius,
-    Min = 10, Max = 500, Rounding = 0, Suffix = "px"
-})
+FOVSettings:AddToggle("SA_FOVVisible", {Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible}):AddColorPicker("SA_FOVColor", { Default = fov_circle.Color, Title = "FOV Color" })
+FOVSettings:AddSlider("SA_FOV", {Text = "FOV Radius", Default = SilentAimSettings.FOVRadius, Min = 10, Max = 500, Rounding = 0, Suffix = "px"})
 
 local TargetSettings = Tabs.Visuals:AddRightGroupbox("Target Indicator")
-
-TargetSettings:AddToggle("SA_TargetVisible", {
-    Text = "Show Target Box",
-    Default = SilentAimSettings.ShowSilentAimTarget,
-    Tooltip = "Draws a box on the current silent aim target."
-}):AddColorPicker("SA_TargetColor", { Default = mouse_box.Color, Title = "Target Box Color" })
-
+TargetSettings:AddToggle("SA_TargetVisible", {Text = "Show Target Box", Default = SilentAimSettings.ShowSilentAimTarget}):AddColorPicker("SA_TargetColor", { Default = mouse_box.Color, Title = "Target Box Color" })
 
 Toggles.SA_Enabled:OnChanged(function() SilentAimSettings.Enabled = Toggles.SA_Enabled.Value end)
 Toggles.SA_TeamCheck:OnChanged(function() SilentAimSettings.TeamCheck = Toggles.SA_TeamCheck.Value end)
 Toggles.SA_VisibleCheck:OnChanged(function() SilentAimSettings.VisibleCheck = Toggles.SA_VisibleCheck.Value end)
 Toggles.SA_Prediction:OnChanged(function() SilentAimSettings.MouseHitPrediction = Toggles.SA_Prediction.Value end)
-
 Options.SA_TargetPart:OnChanged(function() SilentAimSettings.TargetPart = Options.SA_TargetPart.Value end)
 Options.SA_Method:OnChanged(function() SilentAimSettings.SilentAimMethod = Options.SA_Method.Value end)
 Options.SA_HitChance:OnChanged(function() SilentAimSettings.HitChance = Options.SA_HitChance.Value end)
-Options.SA_PredictionAmount:OnChanged(function()
-    SilentAimSettings.MouseHitPredictionAmount = Options.SA_PredictionAmount.Value
-    PredictionAmount = Options.SA_PredictionAmount.Value
-end)
-
+Options.SA_PredictionAmount:OnChanged(function() PredictionAmount = Options.SA_PredictionAmount.Value; SilentAimSettings.MouseHitPredictionAmount = PredictionAmount end)
 Toggles.SA_FOVVisible:OnChanged(function() SilentAimSettings.FOVVisible = Toggles.SA_FOVVisible.Value end)
 Options.SA_FOVColor:OnChanged(function() fov_circle.Color = Options.SA_FOVColor.Value end)
 Options.SA_FOV:OnChanged(function() SilentAimSettings.FOVRadius = Options.SA_FOV.Value end)
-
 Toggles.SA_TargetVisible:OnChanged(function() SilentAimSettings.ShowSilentAimTarget = Toggles.SA_TargetVisible.Value end)
 Options.SA_TargetColor:OnChanged(function() mouse_box.Color = Options.SA_TargetColor.Value end)
 
+RenderStepped:Connect(function()
+    if Library.Unloaded then return end
+    local fov_vis = SilentAimSettings.Enabled and SilentAimSettings.FOVVisible
+    fov_circle.Visible = fov_vis
+    if fov_vis then fov_circle.Radius = SilentAimSettings.FOVRadius; fov_circle.Position = getAimingPosition() end
 
-task.spawn(function()
-    RenderStepped:Connect(function()
-        if Library.Unloaded then return end
-
-        local show_fov = SilentAimSettings.FOVVisible and SilentAimSettings.Enabled
-        fov_circle.Visible = show_fov
-        if show_fov then
-            fov_circle.Radius = SilentAimSettings.FOVRadius
-            fov_circle.Position = getAimingPosition()
-        end
-        
-        local show_target = SilentAimSettings.ShowSilentAimTarget and SilentAimSettings.Enabled
+    local target_vis = SilentAimSettings.Enabled and SilentAimSettings.ShowSilentAimTarget
+    if target_vis then
         local target = getClosestPlayer()
-        if show_target and target then
-            local pos, onScreen = getPositionOnScreen(target.Position)
-            mouse_box.Visible = onScreen
-            if onScreen then
-                mouse_box.Position = pos
-            end
-        else
-            mouse_box.Visible = false
-        end
-    end)
+        if target then local pos, onScreen = getPositionOnScreen(target.Position); mouse_box.Visible = onScreen; if onScreen then mouse_box.Position = pos end
+        else mouse_box.Visible = false end
+    else mouse_box.Visible = false end
 end)
 
--- // Namecall Hook (for Raycast and FindPartOnRay methods)
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
-    if Library.Unloaded then return oldNamecall(...) end
+if not hookmetamethod then
+    warn("Your executor does not support hookmetamethod. Silent Aim will not work.")
+    return
+end
 
-    local self, ... = ...
-    local method = getnamecallmethod()
-    local args = {...}
+local oldNamecall = hookmetamethod(game, "__namecall", function(...)
+    if Library.Unloaded then return oldNamecall(...) end
+    local self, ... = ...; local method = getnamecallmethod(); local args = {...}
     
     if SilentAimSettings.Enabled and self == workspace and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
         local target = getClosestPlayer()
         if target then
             if method == "Raycast" and SilentAimSettings.SilentAimMethod == method then
-                args[2] = getDirection(args[1], target.Position) -- Modify Direction
-                return oldNamecall(self, unpack(args))
-            elseif method == "FindPartOnRayWithIgnoreList" and SilentAimSettings.SilentAimMethod == method then
-                local rayOrigin = args[1].Origin
-                args[1] = Ray.new(rayOrigin, getDirection(rayOrigin, target.Position)) -- Modify Ray
-                return oldNamecall(self, unpack(args))
+                args[2] = getDirection(args[1], target.Position); return oldNamecall(self, unpack(args))
+            elseif method == "FindPartOnRayWithIgnoreList" and SilentAimSettings.SilentAimMethod == method and args[1] then
+                local rayOrigin = args[1].Origin; args[1] = Ray.new(rayOrigin, getDirection(rayOrigin, target.Position)); return oldNamecall(self, unpack(args))
             end
         end
     end
-    
     return oldNamecall(...)
-end))
+end)
 
--- // Index Hook (for Mouse.Hit/Target method)
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, index)
+local oldIndex = hookmetamethod(game, "__index", function(self, index)
     if Library.Unloaded then return oldIndex(self, index) end
-
-    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
-        if CalculateChance(SilentAimSettings.HitChance) then
-            local target = getClosestPlayer()
-            if target then
-                if index == "Target" or index == "target" then
-                    return target
-                elseif index == "Hit" or index == "hit" then
-                    if SilentAimSettings.MouseHitPrediction then
-                        return target.CFrame + (target.AssemblyLinearVelocity * PredictionAmount)
-                    end
-                    return target.CFrame
-                end
-            end
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and CalculateChance(SilentAimSettings.HitChance) then
+        local target = getClosestPlayer()
+        if target then
+            if index == "Target" or index == "target" then return target
+            elseif index == "Hit" or index == "hit" then return (SilentAimSettings.MouseHitPrediction and (target.CFrame + (target.AssemblyLinearVelocity * PredictionAmount))) or target.CFrame end
         end
     end
-
     return oldIndex(self, index)
-end))
+end)
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(v) Library.KeybindFrame.Visible = v end })
