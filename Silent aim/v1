@@ -24,7 +24,7 @@ local SilentAimSettings = {
     FixedFOV = false,
     TargetIndicatorRadius = 20,
     MaxDistance = 500,
-    Y_Offset = 0 -- [ADDED] New setting for Y-axis offset
+    Tracer_Y_Offset = 0
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -100,7 +100,7 @@ do
         makefolder(MainFileName);
     end
 
-    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then
+    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then 
         makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
     end
 end
@@ -144,7 +144,6 @@ local function getClosestPlayer()
     local Closest = nil
     local DistanceToAimPoint = SilentAimSettings.FOVRadius
     local AimPoint
-
     local LocalPlayerCharacter = LocalPlayer.Character
     if not LocalPlayerCharacter then return nil end
     local localRoot = FindFirstChild(LocalPlayerCharacter, "HumanoidRootPart")
@@ -162,7 +161,7 @@ local function getClosestPlayer()
             local targetRoot = Character and FindFirstChild(Character, "HumanoidRootPart")
 
             if Character and targetRoot and not (SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player)) then
-
+                
                 local distance = (localRoot.Position - targetRoot.Position).Magnitude
                 if distance <= SilentAimSettings.MaxDistance then
 
@@ -200,15 +199,15 @@ local Options = Library.Options
 local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
-	Title = "Universal Silent Aim [UI Replaced]",
-	Footer = "version: raw_merge_indicator_fix",
-	Center = true,
-	AutoShow = true
+    Title = "Universal Silent Aim [UI Replaced]",
+    Footer = "version: raw_merge_indicator_fix",
+    Center = true,
+    AutoShow = true
 })
 
 local Tabs = {
-	Main = Window:AddTab("Main", "user"),
-	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+    Main = Window:AddTab("Main", "user"),
+    ["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
 
 local MainGroupBox = Tabs.Main:AddLeftGroupbox("Main Settings", "boxes")
@@ -234,10 +233,6 @@ Options.HitChanceSlider:OnChanged(function(Value) SilentAimSettings.HitChance = 
 MainGroupBox:AddSlider('MaxDistanceSlider', { Text = 'Max Distance', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" })
 Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
--- [ADDED] Y-Offset Slider
-MainGroupBox:AddSlider('YOffsetSlider', { Text = 'Y-Axis Offset', Default = SilentAimSettings.Y_Offset, Min = -10, Max = 10, Rounding = 1, Suffix = " studs" })
-Options.YOffsetSlider:OnChanged(function(Value) SilentAimSettings.Y_Offset = Value end)
-
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
 
 VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, }):AddColorPicker("FOVColorPicker", { Default = fov_circle.Color, Title = "FOV Circle Color" })
@@ -260,6 +255,16 @@ Options.TargetIndicatorRadiusSlider:OnChanged(function(Value) SilentAimSettings.
 VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "Show Target Tracer", Default = SilentAimSettings.ShowTracer, }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "Tracer Color" })
 Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
 Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
+
+VisualsGroupBox:AddSlider('TracerYOffsetSlider', {
+    Text = 'Tracer Y-Axis Offset',
+    Default = SilentAimSettings.Tracer_Y_Offset,
+    Min = -2,
+    Max = 2,
+    Rounding = 3,
+    Suffix = " studs"
+})
+Options.TracerYOffsetSlider:OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
 
 local PredictionGroupBox = Tabs.Main:AddRightGroupbox("Prediction")
 
@@ -293,8 +298,11 @@ resume(create(function()
             local targetCharacter = closestPlayerPart.Parent
             local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
             local tracerTargetPosition = (targetHead and targetHead.Position) or closestPlayerPart.Position
-
-            local targetScreenPos, IsOnScreen = getPositionOnScreen(tracerTargetPosition)
+            
+            local y_offset = SilentAimSettings.Tracer_Y_Offset
+            local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
+            
+            local targetScreenPos, IsOnScreen = getPositionOnScreen(finalTracerPosition)
 
             tracer_line.Visible = IsOnScreen
             if IsOnScreen then
@@ -305,7 +313,7 @@ resume(create(function()
         else
             tracer_line.Visible = false
         end
-
+        
         fov_circle.Visible = Toggles.FOVVisibleToggle.Value
         if fov_circle.Visible then
             fov_circle.Color = Options.FOVColorPicker.Value
@@ -329,31 +337,27 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
         local currentMethod = SilentAimSettings.SilentAimMethod
         local HitPart = getClosestPlayer()
         if HitPart then
-            -- [MODIFIED] Apply the Y-axis offset to the target position
-            local yOffsetVector = Vector3.new(0, SilentAimSettings.Y_Offset, 0)
-            local targetPosition = HitPart.Position + yOffsetVector
-
             if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
                 if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
                     local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, targetPosition)) -- [MODIFIED] Use offset position
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
             elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
                 if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
                     local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, targetPosition)) -- [MODIFIED] Use offset position
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
             elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
                 if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
                     local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, targetPosition)) -- [MODIFIED] Use offset position
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
             elseif Method == "Raycast" and currentMethod == Method then
                 if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                    Arguments[3] = getDirection(Arguments[2], targetPosition) -- [MODIFIED] Use offset position
+                    Arguments[3] = getDirection(Arguments[2], HitPart.Position)
                     return oldNamecall(unpack(Arguments))
                 end
             end
@@ -367,22 +371,16 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
     if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
         local HitPart = getClosestPlayer()
         if HitPart then
-            local yOffsetVector = Vector3.new(0, SilentAimSettings.Y_Offset, 0) -- [ADDED] Define offset vector
-
             if Index == "Target" or Index == "target" then
                 return HitPart
             elseif Index == "Hit" or Index == "hit" then
-                 -- [MODIFIED] Apply the Y-axis offset to the CFrame position
-                local targetCFrame = HitPart.CFrame + yOffsetVector
-                return (SilentAimSettings.MouseHitPrediction and (targetCFrame + (HitPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or targetCFrame
+                return (SilentAimSettings.MouseHitPrediction and (HitPart.CFrame + (HitPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or HitPart.CFrame
             elseif Index == "X" or Index == "x" then
                 return self.X
             elseif Index == "Y" or Index == "y" then
                 return self.Y
             elseif Index == "UnitRay" then
-                 -- [MODIFIED] Also apply offset to unit ray calculation for consistency
-                local hitPosition = (HitPart.CFrame + yOffsetVector).p
-                return Ray.new(self.Origin, (hitPosition - self.Origin).Unit)
+                return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
             end
         end
     end
