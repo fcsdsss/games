@@ -24,7 +24,8 @@ local SilentAimSettings = {
     FixedFOV = false,
     TargetIndicatorRadius = 20,
     MaxDistance = 500,
-    Tracer_Y_Offset = 0
+    Tracer_Y_Offset = 0,
+    ShowDistance = true -- 新增: 距离显示开关的默认值
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -70,7 +71,7 @@ target_indicator.Filled = false
 local distance_text = Drawing.new("Text")
 distance_text.Visible = false
 distance_text.ZIndex = 1001
-distance_text.Font = Drawing.Fonts.Plex -- 使用更通用的字体
+distance_text.Font = Drawing.Fonts.Plex
 distance_text.Size = 14
 distance_text.Color = Color3.fromRGB(255, 255, 255)
 distance_text.Center = true
@@ -83,7 +84,7 @@ fov_circle.Radius = 180
 fov_circle.Filled = false
 fov_circle.Visible = false
 fov_circle.ZIndex = 999
-fov_circle.Transparency = 1
+fov_circle.Transparency = 0.5 -- 修复: 将透明度从1改为0.5使其可见
 fov_circle.Color = Color3.fromRGB(54, 57, 241)
 
 local tracer_line = Drawing.new("Line")
@@ -193,14 +194,12 @@ local function getClosestPlayer()
             local targetRoot = Character and FindFirstChild(Character, "HumanoidRootPart")
 
             if Character and targetRoot then
-                -- [[--- 重要修改: 将可见性检查移到目标选择逻辑之外 ---]]
                 if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then
                     continue
                 end
 
                 local distance = (localRoot.Position - targetRoot.Position).Magnitude
                 if distance <= SilentAimSettings.MaxDistance then
-
                     local Humanoid = FindFirstChild(Character, "Humanoid")
                     if Humanoid and Humanoid.Health > 0 then
                         local TargetPartName = SilentAimSettings.TargetPart
@@ -235,8 +234,8 @@ local Options = Library.Options
 local Toggles = Library.Toggles
 
 local Window = Library:CreateWindow({
-    Title = "Universal Silent Aim",
-    Footer = "v2版本改自vapev4",
+    Title = "Universal Silent Aim [UI Replaced]",
+    Footer = "version: raw_merge_indicator_fix",
     Center = true,
     AutoShow = true
 })
@@ -272,7 +271,7 @@ Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistanc
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
 
 VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, }):AddColorPicker("FOVColorPicker", { Default = fov_circle.Color, Title = "FOV Circle Color" })
-Toggles.FOVVisibleToggle:OnChanged(function(Value) fov_circle.Visible = Value; SilentAimSettings.FOVVisible = Value end)
+Toggles.FOVVisibleToggle:OnChanged(function(Value) SilentAimSettings.FOVVisible = Value end)
 Options.FOVColorPicker:OnChanged(function(Value) fov_circle.Color = Value end)
 
 VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 })
@@ -287,6 +286,10 @@ Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator.Co
 
 VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "Indicator Size", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0})
 Options.TargetIndicatorRadiusSlider:OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
+
+-- [[--- 新增: 距离显示开关UI ---]]
+VisualsGroupBox:AddToggle("ShowDistanceToggle", { Text = "Show Target Distance", Default = SilentAimSettings.ShowDistance })
+Toggles.ShowDistanceToggle:OnChanged(function(Value) SilentAimSettings.ShowDistance = Value end)
 
 VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "Show Target Tracer", Default = SilentAimSettings.ShowTracer, }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "Tracer Color" })
 Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
@@ -324,7 +327,7 @@ resume(create(function()
             local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, currentTargetPart.Position)
 
             target_indicator.Visible = IsOnScreen
-            distance_text.Visible = IsOnScreen
+            distance_text.Visible = IsOnScreen and Toggles.ShowDistanceToggle.Value
 
             if IsOnScreen then
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
@@ -340,13 +343,15 @@ resume(create(function()
                     end
                 end
 
-                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if localRoot then
-                    local distance = (localRoot.Position - currentTargetPart.Position).Magnitude
-                    distance_text.Text = string.format("[%dm]", math.floor(distance))
-                    distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - target_indicator.Radius - 8)
-                else
-                    distance_text.Visible = false
+                if Toggles.ShowDistanceToggle.Value then
+                    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if localRoot then
+                        local distance = (localRoot.Position - currentTargetPart.Position).Magnitude
+                        distance_text.Text = string.format("[%dm]", math.floor(distance))
+                        distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - target_indicator.Radius - 8)
+                    else
+                        distance_text.Visible = false
+                    end
                 end
             end
         else
@@ -438,13 +443,13 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
             if Index == "Target" or Index == "target" then
                 return currentTargetPart
             elseif Index == "Hit" or Index == "hit" then
-                return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * currentTargetPart.Velocity.magnitude * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame
+                return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame
             elseif Index == "X" or Index == "x" then
                 return self.X
             elseif Index == "Y" or Index == "y" then
                 return self.Y
             elseif Index == "UnitRay" then
-                return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit)
+                return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
             end
         end
     end
