@@ -1,61 +1,86 @@
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
+if not syn or not protectgui then
+    getgenv().protectgui = function() end
+end
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
-local Options = Library.Options
-local Toggles = Library.Toggles
-
-local Window = Library:CreateWindow({
-	Title = "mspaint",
-	Footer = "version: functional",
-	Icon = 95816097006870,
-	NotifySide = "Right",
-	ShowCustomCursor = true,
-})
-
-local Tabs = {
-	Main = Window:AddTab("Main", "user"),
-	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+local SilentAimSettings = {
+    Enabled = false,
+    ClassName = "Universal Silent Aim - Averiias, Stefanuk12, xaxa",
+    ToggleKey = "RightAlt",
+    TeamCheck = false,
+    VisibleCheck = false,
+    TargetPart = "HumanoidRootPart",
+    SilentAimMethod = "Raycast",
+    FOVRadius = 130,
+    FOVVisible = true,
+    ShowSilentAimTarget = false,
+    ShowTracer = false,
+    MouseHitPrediction = false,
+    MouseHitPredictionAmount = 0.165,
+    HitChance = 100,
+    FixedFOV = true,
+    TargetIndicatorRadius = 20,
+    MaxDistance = 500,
+    Tracer_Y_Offset = 0
 }
 
-local GunModGroupBox = Tabs.Main:AddLeftGroupbox("Gun Mods")
+getgenv().SilentAimSettings = SilentAimSettings
+local MainFileName = "UniversalSilentAim"
+local SelectedFile, FileToSave = "", ""
 
-GunModGroupBox:AddToggle("InstantReload", { Text = "Instant Reload", Tooltip = "Instantly reloads your weapon.", Default = false })
-GunModGroupBox:AddToggle("InfiniteAmmo", { Text = "Infinite Ammo", Tooltip = "Gives you infinite ammunition.", Default = false })
-GunModGroupBox:AddToggle("NoRecoil", { Text = "No Recoil", Tooltip = "Removes all weapon recoil.", Default = false })
-GunModGroupBox:AddToggle("NoSpread", { Text = "No Spread", Tooltip = "Removes all weapon spread.", Default = false })
-GunModGroupBox:AddToggle("FastShoot", { Text = "Fast Shoot", Tooltip = "Maximizes the rate of fire.", Default = false })
+local Camera = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
-RunService.RenderStepped:Connect(function()
-    pcall(function()
-        local character = LocalPlayer.Character
-        if not character then return end
-        local gun = character:FindFirstChild(LocalPlayer.Name .. "CustomGun") or character:FindFirstChildOfClass("Tool")
-        if not gun then return end
-        if Toggles.InstantReload and Toggles.InstantReload.Value then gun:SetAttribute("reloadTime", 0) end
-        if Toggles.InfiniteAmmo and Toggles.InfiniteAmmo.Value then gun:SetAttribute("magazineSize", math.huge) end
-        if Toggles.NoRecoil and Toggles.NoRecoil.Value then
-            gun:SetAttribute("recoilMin", Vector2.new(0, 0))
-            gun:SetAttribute("recoilMax", Vector2.new(0, 0))
-            gun:SetAttribute("recoilAimReduction", Vector2.new(0, 0))
-        end
-        if Toggles.NoSpread and Toggles.NoSpread.Value then gun:SetAttribute("spread", 0) end
-        if Toggles.FastShoot and Toggles.FastShoot.Value then gun:SetAttribute("rateOfFire", math.huge) end
-    end)
-end)
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
-local AimbotBox = Tabs.Main:AddRightGroupbox("Aimbot")
-local ShootEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("Shoot")
-local firing = false
+local GetChildren = game.GetChildren
+local GetPlayers = Players.GetPlayers
+local WorldToViewportPoint = Camera.WorldToViewportPoint
+local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
+local FindFirstChild = game.FindFirstChild
+local RenderStepped = RunService.RenderStepped
+local GuiInset = GuiService.GetGuiInset
+local GetMouseLocation = UserInputService.GetMouseLocation
+
+local resume = coroutine.resume
+local create = coroutine.create
+
+local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local PredictionAmount = 0.165
+
+local currentTargetPart = nil
+
+local target_indicator = Drawing.new("Circle")
+target_indicator.Visible = false
+target_indicator.ZIndex = 1000
+target_indicator.Color = Color3.fromRGB(255, 0, 0)
+target_indicator.Thickness = 2
+target_indicator.Radius = 20
+target_indicator.Filled = false
+
+local distance_text = Drawing.new("Text")
+distance_text.Visible = false
+distance_text.ZIndex = 1001
+distance_text.Font = Drawing.Fonts.Plex
+distance_text.Size = 14
+distance_text.Color = Color3.fromRGB(255, 255, 255)
+distance_text.Center = true
+distance_text.Outline = true
+
+local tracer_line = Drawing.new("Line")
+tracer_line.Visible = false
+tracer_line.ZIndex = 998
+tracer_line.Color = Color3.fromRGB(255, 255, 0)
+tracer_line.Thickness = 1
+tracer_line.Transparency = 1
 
 local FOVCircleGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 FOVCircleGui.Name = "FOVCircleGui"
@@ -79,114 +104,387 @@ local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
 FOVCorner.Name = "FOVCorner"
 FOVCorner.CornerRadius = UDim.new(1, 0)
 
-AimbotBox:AddToggle("SilentAimbotEnabled", { Text = "Enable Silent Aimbot", Default = false })
-AimbotBox:AddToggle("KillAuraEnabled", { Text = "Enable Kill Aura", Tooltip = "Overrides Silent Aimbot. Attacks all enemies on the map.", Default = false })
-AimbotBox:AddToggle("ShowFOV", { Text = "Show FOV", Default = true, Callback = function(v) FOVCircleGui.Enabled = v end })
-AimbotBox:AddSlider("FOVCircleRadius", { Text = "FOV Radius", Default = 90, Min = 10, Max = 500, Rounding = 0, Callback = function(v) FOVCircleFrame.Size = UDim2.fromOffset(v * 2, v * 2) end })
-AimbotBox:AddColorPicker("FOVColor", { Default = Color3.fromRGB(255, 0, 0), Title = "FOV Color", Callback = function(v) FOVStroke.Color = v end })
+local ExpectedArguments = {
+    FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
+    FindPartOnRayWithWhitelist = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean"} },
+    FindPartOnRay = { ArgCountRequired = 2, Args = {"Instance", "Ray", "Instance", "boolean", "boolean"} },
+    Raycast = { ArgCountRequired = 3, Args = {"Instance", "Vector3", "Vector3", "RaycastParams"} }
+}
 
-FOVCircleGui.Enabled = Toggles.ShowFOV.Value
-FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVCircleRadius.Value * 2, Options.FOVCircleRadius.Value * 2)
-FOVStroke.Color = Options.FOVColor.Value
-
-UserInputService.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then firing = true end end)
-UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then firing = false end end)
-
-local function isEnemy(p)
-	return p and p ~= LocalPlayer and p.Team ~= LocalPlayer.Team and not p.Neutral and not LocalPlayer.Neutral
+function CalculateChance(Percentage)
+    Percentage = math.floor(Percentage)
+    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
+    return chance <= Percentage / 100
 end
 
-local function getTargets()
-	local targets = {}
-	local fovRadius = Options.FOVCircleRadius.Value
-	local viewportCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local useKillAura = Toggles.KillAuraEnabled and Toggles.KillAuraEnabled.Value
+do
+    if not isfolder(MainFileName) then
+        makefolder(MainFileName);
+    end
 
-	for _, p in ipairs(Players:GetPlayers()) do
-		if isEnemy(p) and p.Character then
-			local c = p.Character
-			local h = c:FindFirstChild("Humanoid")
-			local head = c:FindFirstChild("Head")
-			if h and head and h.Health > 0 then
-                if useKillAura then
-                    table.insert(targets, {hum = h, part = head})
-                else
-				    local scrPos, visible = Camera:WorldToViewportPoint(head.Position)
-				    if visible then
-					    local dist = (viewportCenter - Vector2.new(scrPos.X, scrPos.Y)).Magnitude
-					    if dist <= fovRadius then
-						    table.insert(targets, {hum = h, part = head})
-					    end
-				    end
+    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then
+        makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
+    end
+end
+
+local function getPositionOnScreen(Vector)
+    local Vec3, OnScreen = WorldToViewportPoint(Camera, Vector)
+    return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+end
+
+local function ValidateArguments(Args, RayMethod)
+    local Matches = 0
+    if #Args < RayMethod.ArgCountRequired then return false end
+    for Pos, Argument in next, Args do
+        if typeof(Argument) == RayMethod.Args[Pos] then Matches = Matches + 1 end
+    end
+    return Matches >= RayMethod.ArgCountRequired
+end
+
+local function getDirection(Origin, Position)
+    return (Position - Origin).Unit * 1000
+end
+
+local function getMousePosition()
+    return GetMouseLocation(UserInputService)
+end
+
+local function IsPlayerVisible(Player)
+    local localCharacter = LocalPlayer.Character
+    local targetCharacter = Player.Character
+
+    if not (localCharacter and targetCharacter) then
+        return false
+    end
+
+    local targetPartName = SilentAimSettings.TargetPart
+    if targetPartName == "Random" then
+        targetPartName = "HumanoidRootPart"
+    end
+    local targetPart = targetCharacter:FindFirstChild(targetPartName) or targetCharacter:FindFirstChild("HumanoidRootPart")
+
+    if not targetPart then
+        return false
+    end
+
+    local cameraPosition = Camera.CFrame.Position
+    local direction = targetPart.Position - cameraPosition
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {localCharacter}
+
+    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 5), raycastParams)
+
+    if not raycastResult or raycastResult.Instance:IsDescendantOf(targetCharacter) then
+        return true
+    end
+
+    return false
+end
+
+local function getClosestPlayer()
+    local Closest = nil
+    local DistanceToAimPoint = SilentAimSettings.FOVRadius
+    local AimPoint
+    local LocalPlayerCharacter = LocalPlayer.Character
+    if not LocalPlayerCharacter then return nil end
+    local localRoot = FindFirstChild(LocalPlayerCharacter, "HumanoidRootPart")
+    if not localRoot then return nil end
+
+    if SilentAimSettings.FixedFOV then
+        AimPoint = Camera.ViewportSize / 2
+    else
+        AimPoint = getMousePosition()
+    end
+
+    for _, Player in next, GetPlayers(Players) do
+        if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
+            local Character = Player.Character
+            local targetRoot = Character and FindFirstChild(Character, "HumanoidRootPart")
+
+            if Character and targetRoot then
+                if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then
+                    continue
                 end
-			end
-		end
-	end
-	return targets
+
+                local distance = (localRoot.Position - targetRoot.Position).Magnitude
+                if distance <= SilentAimSettings.MaxDistance then
+
+                    local Humanoid = FindFirstChild(Character, "Humanoid")
+                    if Humanoid and Humanoid.Health > 0 then
+                        local TargetPartName = SilentAimSettings.TargetPart
+                        local PartToAim = FindFirstChild(Character, TargetPartName)
+                        if TargetPartName == "Random" then
+                            PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+                        end
+                        if PartToAim then
+                            local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
+                            if OnScreen then
+                                local FovDistance = (AimPoint - ScreenPosition).Magnitude
+                                if FovDistance <= DistanceToAimPoint then
+                                    Closest = PartToAim
+                                    DistanceToAimPoint = FovDistance
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return Closest
 end
 
-RunService.RenderStepped:Connect(function()
-    local silentAimActive = Toggles.SilentAimbotEnabled and Toggles.SilentAimbotEnabled.Value
-    local killAuraActive = Toggles.KillAuraEnabled and Toggles.KillAuraEnabled.Value
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
-	if not (silentAimActive or killAuraActive) or not firing then return end
+local Options = Library.Options
+local Toggles = Library.Toggles
 
-	local char = LocalPlayer.Character
-	if not char then return end
-
-	local tool = char:FindFirstChildOfClass("Tool")
-	if not tool then return end
-	
-	local targets = getTargets()
-	for _, tgt in ipairs(targets) do
-		local pos = tgt.part.Position
-		local dir = (pos - Camera.CFrame.Position).Unit
-		local cf = CFrame.new(Camera.CFrame.Position, pos)
-
-		local args = {
-			os.clock(),
-			tool,
-			cf,
-			false,
-			{
-				["1"] = {
-					tgt.hum,
-					false,
-					true,
-					100
-				}
-			}
-		}
-		ShootEvent:FireServer(unpack(args))
-	end
-end)
-
-
-local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
-MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(v) Library.KeybindFrame.Visible = v end })
-MenuGroup:AddToggle("ShowCustomCursor", { Text = "Custom Cursor", Default = true, Callback = function(v) Library.ShowCustomCursor = v end })
-MenuGroup:AddDropdown("NotificationSide", { Values = { "Left", "Right" }, Default = "Right", Text = "Notification Side", Callback = function(v) Library:SetNotifySide(v) end })
-MenuGroup:AddDropdown("DPIDropdown", { Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }, Default = "100%", Text = "DPI Scale",
-	Callback = function(Value)
-		local DPI = tonumber(Value:gsub("%%", ""))
-		Library:SetDPIScale(DPI)
-	end,
+local Window = Library:CreateWindow({
+    Title = "Universal Silent Aim",
+    Footer = "v2版本改自vapev4",
+    Center = true,
+    AutoShow = true
 })
-MenuGroup:AddDivider()
-MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
-Library.ToggleKeybind = Options.MenuKeybind
-MenuGroup:AddButton("Unload", function() Library:Unload() end)
+
+local Tabs = {
+    Main = Window:AddTab("Main", "user"),
+    ["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+}
+
+local MainGroupBox = Tabs.Main:AddLeftGroupbox("Main Settings", "boxes")
+
+MainGroupBox:AddToggle("EnabledToggle", { Text = "Enabled", Default = SilentAimSettings.Enabled, }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
+Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
+
+MainGroupBox:AddToggle("TeamCheckToggle", { Text = "Team Check", Default = SilentAimSettings.TeamCheck, })
+Toggles.TeamCheckToggle:OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
+
+MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "Visible Check", Default = SilentAimSettings.VisibleCheck, })
+Toggles.VisibleCheckToggle:OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+
+MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "Target Part", })
+Options.TargetPartDropdown:OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
+
+MainGroupBox:AddDropdown("MethodDropdown", { Text = "Silent Aim Method", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } })
+Options.MethodDropdown:OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
+
+MainGroupBox:AddSlider('HitChanceSlider', { Text = 'Hit chance', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" })
+Options.HitChanceSlider:OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
+
+MainGroupBox:AddSlider('MaxDistanceSlider', { Text = 'Max Distance', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" })
+Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
+
+local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
+
+VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV Circle Color" })
+Toggles.FOVVisibleToggle:OnChanged(function(Value) FOVCircleGui.Enabled = Value; SilentAimSettings.FOVVisible = Value end)
+Options.FOVColorPicker:OnChanged(function(Value) FOVStroke.Color = Value end)
+
+VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 })
+Options.FOVRadiusSlider:OnChanged(function(Value) FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2); SilentAimSettings.FOVRadius = Value end)
+
+VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "Fixed FOV (for Mobile)", Default = SilentAimSettings.FixedFOV, })
+Toggles.FixedFOVToggle:OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
+
+VisualsGroupBox:AddToggle("ShowTargetToggle", { Text = "Show Target Indicator", Default = SilentAimSettings.ShowSilentAimTarget, }):AddColorPicker("TargetIndicatorColorPicker", { Default = target_indicator.Color, Title = "Target Indicator Color" })
+Toggles.ShowTargetToggle:OnChanged(function(Value) SilentAimSettings.ShowSilentAimTarget = Value end)
+Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator.Color = Value end)
+
+VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "Indicator Size", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0})
+Options.TargetIndicatorRadiusSlider:OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
+
+VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "Show Target Tracer", Default = SilentAimSettings.ShowTracer, }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "Tracer Color" })
+Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
+Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
+
+VisualsGroupBox:AddSlider('TracerYOffsetSlider', {
+    Text = 'Tracer Y-Axis Offset',
+    Default = SilentAimSettings.Tracer_Y_Offset,
+    Min = -10,
+    Max = 10,
+    Rounding = 3,
+    Suffix = " studs"
+})
+Options.TracerYOffsetSlider:OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
+
+local PredictionGroupBox = Tabs.Main:AddRightGroupbox("Prediction")
+
+PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target Prediction", Default = SilentAimSettings.MouseHitPrediction, })
+Toggles.PredictionToggle:OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
+
+PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 })
+Options.PredictionAmountSlider:OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
+
+FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
+FOVStroke.Color = Options.FOVColorPicker.Value
+FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
+
+resume(create(function()
+    RenderStepped:Connect(function()
+        local isEnabled = Toggles.EnabledToggle.Value
+
+        if isEnabled then
+            currentTargetPart = getClosestPlayer()
+        else
+            currentTargetPart = nil
+        end
+
+        if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
+            local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, currentTargetPart.Position)
+
+            target_indicator.Visible = IsOnScreen
+            distance_text.Visible = IsOnScreen
+
+            if IsOnScreen then
+                target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+                
+                local targetPlayer = Players:GetPlayerFromCharacter(currentTargetPart.Parent)
+                if targetPlayer then
+                    if IsPlayerVisible(targetPlayer) then
+                        target_indicator.Color = Color3.fromRGB(0, 255, 0)
+                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius * 0.6
+                    else
+                        target_indicator.Color = Options.TargetIndicatorColorPicker.Value
+                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
+                    end
+                end
+
+                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if localRoot then
+                    local distance = (localRoot.Position - currentTargetPart.Position).Magnitude
+                    distance_text.Text = string.format("[%dm]", math.floor(distance))
+                    distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - target_indicator.Radius - 8)
+                else
+                    distance_text.Visible = false
+                end
+            end
+        else
+            target_indicator.Visible = false
+            distance_text.Visible = false
+        end
+
+        if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
+            local targetCharacter = currentTargetPart.Parent
+            local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
+            local tracerTargetPosition = (targetHead and targetHead.Position) or currentTargetPart.Position
+            
+            local y_offset = SilentAimSettings.Tracer_Y_Offset
+            local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
+            
+            local targetScreenPos, IsOnScreen = getPositionOnScreen(finalTracerPosition)
+
+            tracer_line.Visible = IsOnScreen
+            if IsOnScreen then
+                tracer_line.From = Camera.ViewportSize / 2
+                tracer_line.To = targetScreenPos
+                tracer_line.Color = Options.TracerColorPicker.Value
+            end
+        else
+            tracer_line.Visible = false
+        end
+        
+        if Toggles.FOVVisibleToggle.Value then
+            if Toggles.FixedFOVToggle.Value then
+                FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+                FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+            else
+                local mousePos = getMousePosition()
+                FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+                FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
+            end
+        end
+    end)
+end))
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+    local Method = getnamecallmethod()
+    local Arguments = {...}
+    local self = Arguments[1]
+
+    if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
+        local currentMethod = SilentAimSettings.SilentAimMethod
+        
+        if currentTargetPart then
+            if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                    local A_Ray = Arguments[2]
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
+                    return oldNamecall(unpack(Arguments))
+                end
+            elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                    local A_Ray = Arguments[2]
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
+                    return oldNamecall(unpack(Arguments))
+                end
+            elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                    local A_Ray = Arguments[2]
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
+                    return oldNamecall(unpack(Arguments))
+                end
+            elseif Method == "Raycast" and currentMethod == Method then
+                if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                    Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
+                    return oldNamecall(unpack(Arguments))
+                end
+            elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
+                local origin = Camera.CFrame.Position
+                local direction = (currentTargetPart.Position - origin).Unit
+                return Ray.new(origin, direction)
+            end
+        end
+    end
+    return oldNamecall(...)
+end))
+
+local oldIndex
+local oldRayNew
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
+        if currentTargetPart then
+            if Index == "Target" or Index == "target" then
+                return currentTargetPart
+            elseif Index == "Hit" or Index == "hit" then
+                return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * currentTargetPart.Velocity.magnitude * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame
+            elseif Index == "X" or Index == "x" then
+                return self.X
+            elseif Index == "Y" or Index == "y" then
+                return self.Y
+            elseif Index == "UnitRay" then
+                return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit)
+            end
+        end
+    end
+    return oldIndex(self, Index)
+end))
+
+oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
+    if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
+        local newDirectionVector = getDirection(origin, currentTargetPart.Position)
+        return oldRayNew(origin, newDirectionVector)
+    end
+    return oldRayNew(origin, direction)
+end))
+
 Library:OnUnload(function()
     FOVCircleGui:Destroy()
-	print("Unloaded!")
 end)
 
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
+
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-ThemeManager:SetFolder("MyScriptHub")
-SaveManager:SetFolder("MyScriptHub/specific-game")
+SaveManager:SetFolder("UniversalSilentAim/Configs")
+
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
+
 SaveManager:LoadAutoloadConfig()
