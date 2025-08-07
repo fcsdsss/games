@@ -15,13 +15,13 @@ local SilentAimSettings = {
     TargetPart = "HumanoidRootPart",
     SilentAimMethod = "Raycast",
     FOVRadius = 130,
-    FOVVisible = false,
+    FOVVisible = true, -- 默认开启以便于调试
     ShowSilentAimTarget = false,
     ShowTracer = false,
     MouseHitPrediction = false,
     MouseHitPredictionAmount = 0.165,
     HitChance = 100,
-    FixedFOV = false,
+    FixedFOV = true, -- 在移动端建议默认开启
     TargetIndicatorRadius = 20,
     MaxDistance = 500,
     Tracer_Y_Offset = 0
@@ -43,7 +43,7 @@ local Mouse = LocalPlayer:GetMouse()
 
 local GetChildren = game.GetChildren
 local GetPlayers = Players.GetPlayers
-local WorldToScreen = Camera.WorldToScreenPoint
+-- 全局性的函数引用统一，避免混用
 local WorldToViewportPoint = Camera.WorldToViewportPoint
 local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
 local FindFirstChild = game.FindFirstChild
@@ -70,7 +70,7 @@ target_indicator.Filled = false
 local distance_text = Drawing.new("Text")
 distance_text.Visible = false
 distance_text.ZIndex = 1001
-distance_text.Font = Drawing.Fonts.Plex -- 使用更通用的字体
+distance_text.Font = Drawing.Fonts.Plex
 distance_text.Size = 14
 distance_text.Color = Color3.fromRGB(255, 255, 255)
 distance_text.Center = true
@@ -116,10 +116,18 @@ do
     end
 end
 
+-- =================================================================
+-- VVVVVVVVVVVVVVVVVVVV 主要修复点 VVVVVVVVVVVVVVVVVVVV
+-- 将 WorldToScreenPoint 更改为 WorldToViewportPoint
+-- 这可以确保坐标计算与 Drawing 对象的渲染空间一致，解决Y轴偏移问题。
+-- =================================================================
 local function getPositionOnScreen(Vector)
-    local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+    local Vec3, OnScreen = WorldToViewportPoint(Camera, Vector)
     return Vector2.new(Vec3.X, Vec3.Y), OnScreen
 end
+-- =================================================================
+-- ^^^^^^^^^^^^^^^^^^^^ 主要修复点 ^^^^^^^^^^^^^^^^^^^^
+-- =================================================================
 
 local function ValidateArguments(Args, RayMethod)
     local Matches = 0
@@ -193,7 +201,6 @@ local function getClosestPlayer()
             local targetRoot = Character and FindFirstChild(Character, "HumanoidRootPart")
 
             if Character and targetRoot then
-                -- [[--- 重要修改: 将可见性检查移到目标选择逻辑之外 ---]]
                 if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then
                     continue
                 end
@@ -209,6 +216,7 @@ local function getClosestPlayer()
                             PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]
                         end
                         if PartToAim then
+                            -- 此处调用 getPositionOnScreen 已被修复，将使用正确的坐标系
                             local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
                             if OnScreen then
                                 local FovDistance = (AimPoint - ScreenPosition).Magnitude
@@ -272,11 +280,11 @@ Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistanc
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
 
 VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, }):AddColorPicker("FOVColorPicker", { Default = fov_circle.Color, Title = "FOV Circle Color" })
-Toggles.FOVVisibleToggle:OnChanged(function(Value) fov_circle.Visible = Value; SilentAimSettings.FOVVisible = Value end)
+Toggles.FOVVisibleToggle:OnChanged(function(Value) SilentAimSettings.FOVVisible = Value end)
 Options.FOVColorPicker:OnChanged(function(Value) fov_circle.Color = Value end)
 
 VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 })
-Options.FOVRadiusSlider:OnChanged(function(Value) fov_circle.Radius = Value; SilentAimSettings.FOVRadius = Value end)
+Options.FOVRadiusSlider:OnChanged(function(Value) SilentAimSettings.FOVRadius = Value end)
 
 VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "Fixed FOV (for Mobile)", Default = SilentAimSettings.FixedFOV, })
 Toggles.FixedFOVToggle:OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
@@ -321,6 +329,7 @@ resume(create(function()
         end
 
         if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
+            -- 此处已使用 WorldToViewportPoint，无需修改，保持一致性
             local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, currentTargetPart.Position)
 
             target_indicator.Visible = IsOnScreen
@@ -362,6 +371,7 @@ resume(create(function()
             local y_offset = SilentAimSettings.Tracer_Y_Offset
             local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
             
+            -- 此处调用 getPositionOnScreen 已被修复
             local targetScreenPos, IsOnScreen = getPositionOnScreen(finalTracerPosition)
 
             tracer_line.Visible = IsOnScreen
@@ -374,6 +384,7 @@ resume(create(function()
             tracer_line.Visible = false
         end
         
+        -- fov_circle 的可见性和位置逻辑保持不变，现在它将与索敌逻辑正确对齐
         fov_circle.Visible = Toggles.FOVVisibleToggle.Value
         if fov_circle.Visible then
             fov_circle.Color = Options.FOVColorPicker.Value
@@ -470,3 +481,6 @@ SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 
 SaveManager:LoadAutoloadConfig()
+
+-- 提示用户为获得最佳移动体验进行设置
+Library:Notify("脚本已加载", "为了在移动设备上获得最佳体验，请在[Main]选项卡中启用 'Fixed FOV'。", "info", 7)
