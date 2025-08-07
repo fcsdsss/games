@@ -94,7 +94,7 @@ FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 FOVStroke.Thickness = 1
 FOVStroke.Transparency = 0.5
 
-local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
+local FOVCorner = Instance.new("UICornelocr", FOVCircleFrame)
 FOVCorner.Name = "FOVCorner"
 FOVCorner.CornerRadius = UDim.new(1, 0)
 
@@ -198,7 +198,10 @@ local function getClosestPlayer()
     if not localRoot then return nil end
 
     if SilentAimSettings.FixedFOV then
-        AimPoint = Camera.ViewportSize / 2
+        -- [[--- 核心修复: 使逻辑瞄准点与屏幕中心(视觉FOV圈中心)对齐 ---]]
+        local screenCenter = Vector2.new(FOVCircleGui.AbsoluteSize.X / 2, FOVCircleGui.AbsoluteSize.Y / 2)
+        local inset = GuiService:GetGuiInset()
+        AimPoint = screenCenter - inset
     else
         AimPoint = getMousePosition()
     end
@@ -398,10 +401,7 @@ resume(create(function()
         
         if FOVCircleGui.Enabled then
             if Toggles.FixedFOVToggle.Value then
-                -- [[--- 核心修复: 始终将视觉FOV圈与游戏视口中心对齐 ---]]
-                local viewportCenter = Camera.ViewportSize / 2
-                local inset = GuiService:GetGuiInset()
-                FOVCircleFrame.Position = UDim2.fromOffset(viewportCenter.X, viewportCenter.Y + inset.Y)
+                FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
             else
                 local mousePos = getMousePosition()
                 FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
