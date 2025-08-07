@@ -57,6 +57,9 @@ local create = coroutine.create
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
 
+-- [[ 优化部分: 将当前目标设为全局变量 ]]
+local currentTargetPart = nil
+
 local target_indicator = Drawing.new("Circle")
 target_indicator.Visible = false
 target_indicator.ZIndex = 1000
@@ -277,14 +280,15 @@ Options.PredictionAmountSlider:OnChanged(function(Value) SilentAimSettings.Mouse
 resume(create(function()
     RenderStepped:Connect(function()
         local isEnabled = Toggles.EnabledToggle.Value
-        local closestPlayerPart = nil
 
         if isEnabled then
-            closestPlayerPart = getClosestPlayer()
+            currentTargetPart = getClosestPlayer()
+        else
+            currentTargetPart = nil
         end
 
-        if Toggles.ShowTargetToggle.Value and isEnabled and closestPlayerPart then
-            local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, closestPlayerPart.Position)
+        if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
+            local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, currentTargetPart.Position)
             target_indicator.Visible = IsOnScreen
             if IsOnScreen then
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
@@ -294,10 +298,10 @@ resume(create(function()
             target_indicator.Visible = false
         end
 
-        if Toggles.ShowTracerToggle.Value and isEnabled and closestPlayerPart then
-            local targetCharacter = closestPlayerPart.Parent
+        if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
+            local targetCharacter = currentTargetPart.Parent
             local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
-            local tracerTargetPosition = (targetHead and targetHead.Position) or closestPlayerPart.Position
+            local tracerTargetPosition = (targetHead and targetHead.Position) or currentTargetPart.Position
             
             local y_offset = SilentAimSettings.Tracer_Y_Offset
             local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
@@ -335,34 +339,34 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
 
     if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
         local currentMethod = SilentAimSettings.SilentAimMethod
-        local HitPart = getClosestPlayer()
-        if HitPart then
+        
+        if currentTargetPart then
             if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
                 if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
                     local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
             elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
                 if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
                     local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
             elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
                 if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
                     local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, HitPart.Position))
+                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
                     return oldNamecall(unpack(Arguments))
                 end
             elseif Method == "Raycast" and currentMethod == Method then
                 if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                    Arguments[3] = getDirection(Arguments[2], HitPart.Position)
+                    Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
                     return oldNamecall(unpack(Arguments))
                 end
             elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
                 local origin = Camera.CFrame.Position
-                local direction = (HitPart.Position - origin).Unit
+                local direction = (currentTargetPart.Position - origin).Unit
                 return Ray.new(origin, direction)
             end
         end
@@ -374,12 +378,11 @@ local oldIndex
 local oldRayNew
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
     if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
-        local HitPart = getClosestPlayer()
-        if HitPart then
+        if currentTargetPart then
             if Index == "Target" or Index == "target" then
-                return HitPart
+                return currentTargetPart
             elseif Index == "Hit" or Index == "hit" then
-                return (SilentAimSettings.MouseHitPrediction and (HitPart.CFrame + (HitPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or HitPart.CFrame
+                return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame
             elseif Index == "X" or Index == "x" then
                 return self.X
             elseif Index == "Y" or Index == "y" then
@@ -393,12 +396,9 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
 end))
 
 oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
-    if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
-        local HitPart = getClosestPlayer()
-        if HitPart then
-            local newDirectionVector = getDirection(origin, HitPart.Position)
-            return oldRayNew(origin, newDirectionVector)
-        end
+    if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
+        local newDirectionVector = getDirection(origin, currentTargetPart.Position)
+        return oldRayNew(origin, newDirectionVector)
     end
     return oldRayNew(origin, direction)
 end))
