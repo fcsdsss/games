@@ -1,12 +1,3 @@
-hookfunction(getnamecallmethod, function()
-  return
-end)
-for i, v in pairs({request, loadstring, base64.decode}) do
-  if isfunctionhooked(v) or not isfunctionhooked(getnamecallmethod) then
-    return
-  end
-end
-
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
