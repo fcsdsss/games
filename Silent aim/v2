@@ -198,10 +198,7 @@ local function getClosestPlayer()
     if not localRoot then return nil end
 
     if SilentAimSettings.FixedFOV then
-        -- [[--- 核心修复: 计算屏幕中心在游戏视口内的精确坐标 ---]]
-        local screenCenter = Vector2.new(FOVCircleGui.AbsoluteSize.X / 2, FOVCircleGui.AbsoluteSize.Y / 2)
-        local inset = GuiService:GetGuiInset()
-        AimPoint = screenCenter - inset
+        AimPoint = Camera.ViewportSize / 2
     else
         AimPoint = getMousePosition()
     end
@@ -401,7 +398,10 @@ resume(create(function()
         
         if FOVCircleGui.Enabled then
             if Toggles.FixedFOVToggle.Value then
-                FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+                -- [[--- 核心修复: 始终将视觉FOV圈与游戏视口中心对齐 ---]]
+                local viewportCenter = Camera.ViewportSize / 2
+                local inset = GuiService:GetGuiInset()
+                FOVCircleFrame.Position = UDim2.fromOffset(viewportCenter.X, viewportCenter.Y + inset.Y)
             else
                 local mousePos = getMousePosition()
                 FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
