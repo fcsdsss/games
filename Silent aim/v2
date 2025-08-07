@@ -37,6 +37,7 @@ local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService") -- 新增: 获取TweenService
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -58,6 +59,8 @@ local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
 
 local currentTargetPart = nil
+local indicatorTween = nil -- 新增: 用于跟踪动画
+local isIndicatorInVisibleState = false -- 新增: 用于跟踪指示圈状态
 
 local target_indicator = Drawing.new("Circle")
 target_indicator.Visible = false
@@ -129,7 +132,6 @@ local function getMousePosition()
     return GetMouseLocation(UserInputService)
 end
 
--- [[--- 已替换为基于射线的新版可见性检查函数 ---]]
 local function IsPlayerVisible(Player)
     local localCharacter = LocalPlayer.Character
     local targetCharacter = Player.Character
@@ -315,18 +317,43 @@ resume(create(function()
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
 
                 local targetPlayer = Players:GetPlayerFromCharacter(currentTargetPart.Parent)
+                local isTargetVisible = false
                 if targetPlayer then
-                    if IsPlayerVisible(targetPlayer) then
-                        target_indicator.Color = Color3.fromRGB(0, 255, 0)
-                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius * 0.6
-                    else
-                        target_indicator.Color = Options.TargetIndicatorColorPicker.Value
-                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
-                    end
+                    isTargetVisible = IsPlayerVisible(targetPlayer)
                 end
+
+                -- [[--- 新增: 动态动画逻辑 ---]]
+                if isTargetVisible and not isIndicatorInVisibleState then
+                    isIndicatorInVisibleState = true
+                    if indicatorTween then indicatorTween:Cancel() end
+                    local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad)
+                    local goal = {
+                        Radius = SilentAimSettings.TargetIndicatorRadius * 0.6,
+                        Color = Color3.fromRGB(0, 255, 0)
+                    }
+                    indicatorTween = TweenService:Create(target_indicator, tweenInfo, goal)
+                    indicatorTween:Play()
+                elseif not isTargetVisible and isIndicatorInVisibleState then
+                    isIndicatorInVisibleState = false
+                    if indicatorTween then indicatorTween:Cancel() end
+                    local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad)
+                    local goal = {
+                        Radius = SilentAimSettings.TargetIndicatorRadius,
+                        Color = Options.TargetIndicatorColorPicker.Value
+                    }
+                    indicatorTween = TweenService:Create(target_indicator, tweenInfo, goal)
+                    indicatorTween:Play()
+                end
+                -- [[--- 动画逻辑结束 ---]]
+                
+            else
+                if indicatorTween then indicatorTween:Cancel() end
+                isIndicatorInVisibleState = false
             end
         else
             target_indicator.Visible = false
+            if indicatorTween then indicatorTween:Cancel() end
+            isIndicatorInVisibleState = false
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
