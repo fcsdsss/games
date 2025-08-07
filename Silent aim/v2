@@ -67,11 +67,10 @@ target_indicator.Thickness = 2
 target_indicator.Radius = 20
 target_indicator.Filled = false
 
--- [[--- 新增: 创建距离文本对象 ---]]
 local distance_text = Drawing.new("Text")
 distance_text.Visible = false
 distance_text.ZIndex = 1001
-distance_text.Font = Drawing.Fonts.UI
+distance_text.Font = Drawing.Fonts.Plex -- 使用更通用的字体
 distance_text.Size = 14
 distance_text.Color = Color3.fromRGB(255, 255, 255)
 distance_text.Center = true
@@ -164,9 +163,9 @@ local function IsPlayerVisible(Player)
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {localCharacter}
 
-    local raycastResult = workspace:Raycast(cameraPosition, direction, raycastParams)
+    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 5), raycastParams)
 
-    if raycastResult and raycastResult.Instance:IsDescendantOf(targetCharacter) then
+    if not raycastResult or raycastResult.Instance:IsDescendantOf(targetCharacter) then
         return true
     end
 
@@ -193,8 +192,12 @@ local function getClosestPlayer()
             local Character = Player.Character
             local targetRoot = Character and FindFirstChild(Character, "HumanoidRootPart")
 
-            if Character and targetRoot and not (SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player)) then
-                
+            if Character and targetRoot then
+                -- [[--- 重要修改: 将可见性检查移到目标选择逻辑之外 ---]]
+                if SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player) then
+                    continue
+                end
+
                 local distance = (localRoot.Position - targetRoot.Position).Magnitude
                 if distance <= SilentAimSettings.MaxDistance then
 
@@ -319,11 +322,13 @@ resume(create(function()
 
         if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
             local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, currentTargetPart.Position)
+
             target_indicator.Visible = IsOnScreen
-            
+            distance_text.Visible = IsOnScreen
+
             if IsOnScreen then
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
-
+                
                 local targetPlayer = Players:GetPlayerFromCharacter(currentTargetPart.Parent)
                 if targetPlayer then
                     if IsPlayerVisible(targetPlayer) then
@@ -334,20 +339,15 @@ resume(create(function()
                         target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
                     end
                 end
-                
-                -- [[--- 更新距离文本 ---]]
+
                 local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if localRoot then
                     local distance = (localRoot.Position - currentTargetPart.Position).Magnitude
                     distance_text.Text = string.format("[%dm]", math.floor(distance))
                     distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - target_indicator.Radius - 8)
-                    distance_text.Visible = true
                 else
                     distance_text.Visible = false
                 end
-
-            else
-                distance_text.Visible = false
             end
         else
             target_indicator.Visible = false
@@ -438,13 +438,13 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
             if Index == "Target" or Index == "target" then
                 return currentTargetPart
             elseif Index == "Hit" or Index == "hit" then
-                return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame
+                return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * currentTargetPart.Velocity.magnitude * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame
             elseif Index == "X" or Index == "x" then
                 return self.X
             elseif Index == "Y" or Index == "y" then
                 return self.Y
             elseif Index == "UnitRay" then
-                return Ray.new(self.Origin, (self.Hit - self.Origin).Unit)
+                return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit)
             end
         end
     end
