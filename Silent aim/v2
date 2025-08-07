@@ -15,7 +15,7 @@ local SilentAimSettings = {
     TargetPart = "HumanoidRootPart",
     SilentAimMethod = "Raycast",
     FOVRadius = 130,
-    FOVVisible = false,
+    FOVVisible = true,
     ShowSilentAimTarget = false,
     ShowTracer = false,
     MouseHitPrediction = false,
@@ -25,7 +25,7 @@ local SilentAimSettings = {
     TargetIndicatorRadius = 20,
     MaxDistance = 500,
     Tracer_Y_Offset = 0,
-    ShowDistance = true -- 新增: 距离显示开关的默认值
+    ShowDistance = true
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -77,15 +77,7 @@ distance_text.Color = Color3.fromRGB(255, 255, 255)
 distance_text.Center = true
 distance_text.Outline = true
 
-local fov_circle = Drawing.new("Circle")
-fov_circle.Thickness = 1
-fov_circle.NumSides = 100
-fov_circle.Radius = 180
-fov_circle.Filled = false
-fov_circle.Visible = false
-fov_circle.ZIndex = 999
-fov_circle.Transparency = 0.5 -- 修复: 将透明度从1改为0.5使其可见
-fov_circle.Color = Color3.fromRGB(54, 57, 241)
+-- [[--- FOV圈修改: 移除旧的Drawing对象 ---]]
 
 local tracer_line = Drawing.new("Line")
 tracer_line.Visible = false
@@ -100,6 +92,29 @@ local ExpectedArguments = {
     FindPartOnRay = { ArgCountRequired = 2, Args = {"Instance", "Ray", "Instance", "boolean", "boolean"} },
     Raycast = { ArgCountRequired = 3, Args = {"Instance", "Vector3", "Vector3", "RaycastParams"} }
 }
+
+-- [[--- FOV圈修改: 添加新的原生UI FOV圈 ---]]
+local FOVCircleGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+FOVCircleGui.Name = "FOVCircleGui"
+FOVCircleGui.ResetOnSpawn = false
+FOVCircleGui.IgnoreGuiInset = true
+FOVCircleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local FOVCircleFrame = Instance.new("Frame", FOVCircleGui)
+FOVCircleFrame.Name = "FOVCircleFrame"
+FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircleFrame.BackgroundTransparency = 1
+
+local FOVStroke = Instance.new("UIStroke", FOVCircleFrame)
+FOVStroke.Name = "FOVStroke"
+FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+FOVStroke.Thickness = 1
+FOVStroke.Transparency = 0.5
+
+local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
+FOVCorner.Name = "FOVCorner"
+FOVCorner.CornerRadius = UDim.new(1, 0)
+
 
 function CalculateChance(Percentage)
     Percentage = math.floor(Percentage)
@@ -270,12 +285,11 @@ Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistanc
 
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
 
-VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, }):AddColorPicker("FOVColorPicker", { Default = fov_circle.Color, Title = "FOV Circle Color" })
+VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, Callback = function(v) FOVCircleGui.Enabled = v end }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(255, 0, 0), Title = "FOV Circle Color", Callback = function(v) FOVStroke.Color = v end })
 Toggles.FOVVisibleToggle:OnChanged(function(Value) SilentAimSettings.FOVVisible = Value end)
-Options.FOVColorPicker:OnChanged(function(Value) fov_circle.Color = Value end)
 
-VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 })
-Options.FOVRadiusSlider:OnChanged(function(Value) fov_circle.Radius = Value; SilentAimSettings.FOVRadius = Value end)
+VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0, Callback = function(v) FOVCircleFrame.Size = UDim2.fromOffset(v * 2, v * 2) end })
+Options.FOVRadiusSlider:OnChanged(function(Value) SilentAimSettings.FOVRadius = Value end)
 
 VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "Fixed FOV (for Mobile)", Default = SilentAimSettings.FixedFOV, })
 Toggles.FixedFOVToggle:OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
@@ -287,7 +301,6 @@ Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator.Co
 VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "Indicator Size", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0})
 Options.TargetIndicatorRadiusSlider:OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
 
--- [[--- 新增: 距离显示开关UI ---]]
 VisualsGroupBox:AddToggle("ShowDistanceToggle", { Text = "Show Target Distance", Default = SilentAimSettings.ShowDistance })
 Toggles.ShowDistanceToggle:OnChanged(function(Value) SilentAimSettings.ShowDistance = Value end)
 
@@ -312,6 +325,11 @@ Toggles.PredictionToggle:OnChanged(function(Value) SilentAimSettings.MouseHitPre
 
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 })
 Options.PredictionAmountSlider:OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
+
+-- [[--- FOV圈修改: 初始化FOV圈的初始属性 ---]]
+FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
+FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
+FOVStroke.Color = Options.FOVColorPicker.Value
 
 resume(create(function()
     RenderStepped:Connect(function()
@@ -379,14 +397,13 @@ resume(create(function()
             tracer_line.Visible = false
         end
         
-        fov_circle.Visible = Toggles.FOVVisibleToggle.Value
-        if fov_circle.Visible then
-            fov_circle.Color = Options.FOVColorPicker.Value
-            fov_circle.Radius = Options.FOVRadiusSlider.Value
+        -- [[--- FOV圈修改: 更新FOV圈位置 ---]]
+        if FOVCircleGui.Enabled then
             if Toggles.FixedFOVToggle.Value then
-                fov_circle.Position = Camera.ViewportSize / 2
+                FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
             else
-                fov_circle.Position = getMousePosition()
+                local mousePos = getMousePosition()
+                FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
             end
         end
     end)
@@ -463,6 +480,10 @@ oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
     end
     return oldRayNew(origin, direction)
 end))
+
+Library:OnUnload(function()
+    FOVCircleGui:Destroy()
+end)
 
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
