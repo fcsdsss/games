@@ -37,7 +37,6 @@ local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -59,8 +58,6 @@ local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
 
 local currentTargetPart = nil
-local indicatorTween = nil
-local isIndicatorInVisibleState = false
 
 local target_indicator = Drawing.new("Circle")
 target_indicator.Visible = false
@@ -69,6 +66,16 @@ target_indicator.Color = Color3.fromRGB(255, 0, 0)
 target_indicator.Thickness = 2
 target_indicator.Radius = 20
 target_indicator.Filled = false
+
+-- [[--- 新增: 创建距离文本对象 ---]]
+local distance_text = Drawing.new("Text")
+distance_text.Visible = false
+distance_text.ZIndex = 1001
+distance_text.Font = Drawing.Fonts.UI
+distance_text.Size = 14
+distance_text.Color = Color3.fromRGB(255, 255, 255)
+distance_text.Center = true
+distance_text.Outline = true
 
 local fov_circle = Drawing.new("Circle")
 fov_circle.Thickness = 1
@@ -313,46 +320,38 @@ resume(create(function()
         if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
             local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, currentTargetPart.Position)
             target_indicator.Visible = IsOnScreen
+            
             if IsOnScreen then
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
 
                 local targetPlayer = Players:GetPlayerFromCharacter(currentTargetPart.Parent)
-                local isCurrentlyVisible = targetPlayer and IsPlayerVisible(targetPlayer) or false
-
-                if isCurrentlyVisible ~= isIndicatorInVisibleState then
-                    isIndicatorInVisibleState = isCurrentlyVisible
-                    if indicatorTween then indicatorTween:Cancel() end
-
-                    local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad)
-                    local goal = {}
-                    if isCurrentlyVisible then
-                        goal = {
-                            Radius = SilentAimSettings.TargetIndicatorRadius * 0.6,
-                            Color = Color3.fromRGB(0, 255, 0)
-                        }
+                if targetPlayer then
+                    if IsPlayerVisible(targetPlayer) then
+                        target_indicator.Color = Color3.fromRGB(0, 255, 0)
+                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius * 0.6
                     else
-                        goal = {
-                            Radius = SilentAimSettings.TargetIndicatorRadius,
-                            Color = Options.TargetIndicatorColorPicker.Value
-                        }
+                        target_indicator.Color = Options.TargetIndicatorColorPicker.Value
+                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
                     end
-                    indicatorTween = TweenService:Create(target_indicator, tweenInfo, goal)
-                    indicatorTween:Play()
                 end
+                
+                -- [[--- 更新距离文本 ---]]
+                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if localRoot then
+                    local distance = (localRoot.Position - currentTargetPart.Position).Magnitude
+                    distance_text.Text = string.format("[%dm]", math.floor(distance))
+                    distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - target_indicator.Radius - 8)
+                    distance_text.Visible = true
+                else
+                    distance_text.Visible = false
+                end
+
             else
-                if isIndicatorInVisibleState then
-                    isIndicatorInVisibleState = false
-                    if indicatorTween then indicatorTween:Cancel() end
-                    target_indicator.Color = Options.TargetIndicatorColorPicker.Value
-                    target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
-                end
+                distance_text.Visible = false
             end
         else
             target_indicator.Visible = false
-            if isIndicatorInVisibleState then
-                isIndicatorInVisibleState = false
-                if indicatorTween then indicatorTween:Cancel() end
-            end
+            distance_text.Visible = false
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
