@@ -77,23 +77,6 @@ distance_text.Color = Color3.fromRGB(255, 255, 255)
 distance_text.Center = true
 distance_text.Outline = true
 
--- [[--- FOV圈修改: 移除旧的Drawing对象 ---]]
-
-local tracer_line = Drawing.new("Line")
-tracer_line.Visible = false
-tracer_line.ZIndex = 998
-tracer_line.Color = Color3.fromRGB(255, 255, 0)
-tracer_line.Thickness = 1
-tracer_line.Transparency = 1
-
-local ExpectedArguments = {
-    FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
-    FindPartOnRayWithWhitelist = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean"} },
-    FindPartOnRay = { ArgCountRequired = 2, Args = {"Instance", "Ray", "Instance", "boolean", "boolean"} },
-    Raycast = { ArgCountRequired = 3, Args = {"Instance", "Vector3", "Vector3", "RaycastParams"} }
-}
-
--- [[--- FOV圈修改: 添加新的原生UI FOV圈 ---]]
 local FOVCircleGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 FOVCircleGui.Name = "FOVCircleGui"
 FOVCircleGui.ResetOnSpawn = false
@@ -115,6 +98,19 @@ local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
 FOVCorner.Name = "FOVCorner"
 FOVCorner.CornerRadius = UDim.new(1, 0)
 
+local tracer_line = Drawing.new("Line")
+tracer_line.Visible = false
+tracer_line.ZIndex = 998
+tracer_line.Color = Color3.fromRGB(255, 255, 0)
+tracer_line.Thickness = 1
+tracer_line.Transparency = 1
+
+local ExpectedArguments = {
+    FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
+    FindPartOnRayWithWhitelist = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean"} },
+    FindPartOnRay = { ArgCountRequired = 2, Args = {"Instance", "Ray", "Instance", "boolean", "boolean"} },
+    Raycast = { ArgCountRequired = 3, Args = {"Instance", "Vector3", "Vector3", "RaycastParams"} }
+}
 
 function CalculateChance(Percentage)
     Percentage = math.floor(Percentage)
@@ -173,15 +169,19 @@ local function IsPlayerVisible(Player)
     end
 
     local cameraPosition = Camera.CFrame.Position
-    local direction = targetPart.Position - cameraPosition
+    local directionVector = targetPart.Position - cameraPosition
 
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {localCharacter}
 
-    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 5), raycastParams)
+    local raycastResult = workspace:Raycast(cameraPosition, directionVector, raycastParams)
 
-    if not raycastResult or raycastResult.Instance:IsDescendantOf(targetCharacter) then
+    if not raycastResult then
+        return true
+    end
+    
+    if raycastResult.Instance:IsDescendantOf(targetCharacter) then
         return true
     end
 
@@ -326,7 +326,6 @@ Toggles.PredictionToggle:OnChanged(function(Value) SilentAimSettings.MouseHitPre
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 })
 Options.PredictionAmountSlider:OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
--- [[--- FOV圈修改: 初始化FOV圈的初始属性 ---]]
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
 FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
 FOVStroke.Color = Options.FOVColorPicker.Value
@@ -397,10 +396,12 @@ resume(create(function()
             tracer_line.Visible = false
         end
         
-        -- [[--- FOV圈修改: 更新FOV圈位置 ---]]
         if FOVCircleGui.Enabled then
             if Toggles.FixedFOVToggle.Value then
-                FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+                -- [[--- 核心修复: 计算并使用视口的精确中心点 ---]]
+                local viewportCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                local inset = GuiService:GetGuiInset()
+                FOVCircleFrame.Position = UDim2.fromOffset(viewportCenter.X, viewportCenter.Y + inset.Y)
             else
                 local mousePos = getMousePosition()
                 FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
