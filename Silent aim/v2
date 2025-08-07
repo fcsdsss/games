@@ -129,17 +129,39 @@ local function getMousePosition()
     return GetMouseLocation(UserInputService)
 end
 
+-- [[--- 已替换为基于射线的新版可见性检查函数 ---]]
 local function IsPlayerVisible(Player)
-    local PlayerCharacter = Player.Character
-    local LocalPlayerCharacter = LocalPlayer.Character
-    if not (PlayerCharacter and LocalPlayerCharacter and LocalPlayerCharacter.PrimaryPart) then return false end
+    local localCharacter = LocalPlayer.Character
+    local targetCharacter = Player.Character
+
+    if not (localCharacter and targetCharacter) then
+        return false
+    end
+
     local targetPartName = SilentAimSettings.TargetPart
-    if targetPartName == "Random" then targetPartName = "HumanoidRootPart" end
-    local PlayerRoot = FindFirstChild(PlayerCharacter, targetPartName) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
-    if not PlayerRoot then return false end
-    local CastPoints, IgnoreList = {PlayerRoot.Position, LocalPlayerCharacter.PrimaryPart.Position}, {LocalPlayerCharacter, PlayerCharacter}
-    local ObscuringObjects = #GetPartsObscuringTarget(Camera, CastPoints, IgnoreList)
-    return ObscuringObjects == 0
+    if targetPartName == "Random" then
+        targetPartName = "HumanoidRootPart"
+    end
+    local targetPart = targetCharacter:FindFirstChild(targetPartName) or targetCharacter:FindFirstChild("HumanoidRootPart")
+
+    if not targetPart then
+        return false
+    end
+
+    local cameraPosition = Camera.CFrame.Position
+    local direction = targetPart.Position - cameraPosition
+
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {localCharacter}
+
+    local raycastResult = workspace:Raycast(cameraPosition, direction, raycastParams)
+
+    if raycastResult and raycastResult.Instance:IsDescendantOf(targetCharacter) then
+        return true
+    end
+
+    return false
 end
 
 local function getClosestPlayer()
@@ -293,17 +315,14 @@ resume(create(function()
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
 
                 local targetPlayer = Players:GetPlayerFromCharacter(currentTargetPart.Parent)
-                local isTargetVisible = false
                 if targetPlayer then
-                    isTargetVisible = IsPlayerVisible(targetPlayer)
-                end
-
-                if isTargetVisible then
-                    target_indicator.Color = Color3.fromRGB(0, 255, 0)
-                    target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius * 0.6
-                else
-                    target_indicator.Color = Options.TargetIndicatorColorPicker.Value
-                    target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
+                    if IsPlayerVisible(targetPlayer) then
+                        target_indicator.Color = Color3.fromRGB(0, 255, 0)
+                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius * 0.6
+                    else
+                        target_indicator.Color = Options.TargetIndicatorColorPicker.Value
+                        target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
+                    end
                 end
             end
         else
