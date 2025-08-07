@@ -132,7 +132,7 @@ end
 local function IsPlayerVisible(Player)
     local PlayerCharacter = Player.Character
     local LocalPlayerCharacter = LocalPlayer.Character
-    if not (PlayerCharacter and LocalPlayerCharacter) then return false end
+    if not (PlayerCharacter and LocalPlayerCharacter and LocalPlayerCharacter.PrimaryPart) then return false end
     local targetPartName = SilentAimSettings.TargetPart
     if targetPartName == "Random" then targetPartName = "HumanoidRootPart" end
     local PlayerRoot = FindFirstChild(PlayerCharacter, targetPartName) or FindFirstChild(PlayerCharacter, "HumanoidRootPart")
@@ -292,7 +292,6 @@ resume(create(function()
             if IsOnScreen then
                 target_indicator.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
 
-                -- [[--- 新增功能: 根据掩体状态改变颜色和大小 ---]]
                 local targetPlayer = Players:GetPlayerFromCharacter(currentTargetPart.Parent)
                 local isTargetVisible = false
                 if targetPlayer then
@@ -300,15 +299,12 @@ resume(create(function()
                 end
 
                 if isTargetVisible then
-                    -- 目标可见: 绿色，大小缩小40%
                     target_indicator.Color = Color3.fromRGB(0, 255, 0)
                     target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius * 0.6
                 else
-                    -- 目标在掩体后: 红色，正常大小
-                    target_indicator.Color = Color3.fromRGB(255, 0, 0)
+                    target_indicator.Color = Options.TargetIndicatorColorPicker.Value
                     target_indicator.Radius = SilentAimSettings.TargetIndicatorRadius
                 end
-                -- [[--- 功能结束 ---]]
             end
         else
             target_indicator.Visible = false
