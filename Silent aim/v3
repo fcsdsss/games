@@ -8,7 +8,7 @@ end
 
 local SilentAimSettings = {
     Enabled = false,
-    ClassName = "Universal Silent Aim - Final Build",
+    ClassName = "Universal Silent Aim - Final Whitelist",
     ToggleKey = "RightAlt",
     TeamCheck = false,
     VisibleCheck = false,
@@ -120,7 +120,7 @@ end
 
 local function updateNPCs()
     npcList = {}
-    for _, v in ipairs(workspace:GetDescendants()) do
+    for _, v in ipairs(workspace:GetChildren()) do
         if isNPC(v) then
             table.insert(npcList, v)
         end
@@ -144,7 +144,7 @@ end
 
 local function getClosestPlayer()
     local Closest = nil
-    local ClosestDistance = SilentAimSettings.FOVRadius
+    local DistanceToAimPoint = SilentAimSettings.FOVRadius
     local AimPoint
     local LocalPlayerCharacter = LocalPlayer.Character
     if not LocalPlayerCharacter then return nil end
@@ -152,33 +152,35 @@ local function getClosestPlayer()
     if not localRoot then return nil end
     if SilentAimSettings.FixedFOV then AimPoint = Camera.ViewportSize / 2 else AimPoint = GetMouseLocation(UserInputService) end
 
+    local whitelistedPlayers = nil
+    if SilentAimSettings.WhitelistEnabled and Options and Options.WhitelistDropdown then
+        whitelistedPlayers = Options.WhitelistDropdown.Value
+    end
+
     for _, Player in ipairs(GetPlayers(Players)) do
-        if Player == LocalPlayer then continue end
-        
-        if SilentAimSettings.WhitelistEnabled and Options and Options.WhitelistDropdown then
-            if not Options.WhitelistDropdown.Value[Player.Name] then
+        if Player ~= LocalPlayer then
+            if whitelistedPlayers and not whitelistedPlayers[Player.Name] then
                 continue
             end
-        end
 
-        if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
-
-        local Character = Player.Character
-        if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
-            if SilentAimSettings.VisibleCheck and not IsObjectVisible(Character) then continue end
-
-            if (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
-                local TargetPartName = SilentAimSettings.TargetPart
-                local PartToAim = FindFirstChild(Character, TargetPartName)
-                if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                
-                if PartToAim then
-                    local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
-                    if OnScreen then
-                        local FovDistance = (AimPoint - ScreenPosition).Magnitude
-                        if FovDistance < ClosestDistance then
-                            Closest = PartToAim
-                            ClosestDistance = FovDistance
+            if not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
+                local Character = Player.Character
+                if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
+                    if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
+                        if (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
+                            local TargetPartName = SilentAimSettings.TargetPart
+                            local PartToAim = FindFirstChild(Character, TargetPartName)
+                            if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
+                            if PartToAim then
+                                local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
+                                if OnScreen then
+                                    local FovDistance = (AimPoint - ScreenPosition).Magnitude
+                                    if FovDistance <= DistanceToAimPoint then
+                                        Closest = PartToAim
+                                        DistanceToAimPoint = FovDistance
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -190,7 +192,7 @@ end
 
 local function getNPCTarget()
     local Closest = nil
-    local ClosestDistance = SilentAimSettings.FOVRadius
+    local DistanceToAimPoint = SilentAimSettings.FOVRadius
     local AimPoint
     local LocalPlayerCharacter = LocalPlayer.Character
     if not LocalPlayerCharacter then return nil end
@@ -201,20 +203,15 @@ local function getNPCTarget()
     for _, NPCModel in ipairs(npcList) do
         if NPCModel and NPCModel.PrimaryPart then
             if SilentAimSettings.VisibleCheck and not IsObjectVisible(NPCModel) then continue end
-
             if (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
                 local TargetPartName = SilentAimSettings.TargetPart
                 local PartToAim = FindFirstChild(NPCModel, TargetPartName)
                 if TargetPartName == "Random" then PartToAim = NPCModel[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                
                 if PartToAim then
                     local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
                     if OnScreen then
                         local FovDistance = (AimPoint - ScreenPosition).Magnitude
-                        if FovDistance < ClosestDistance then
-                            Closest = PartToAim
-                            ClosestDistance = FovDistance
-                        end
+                        if FovDistance <= DistanceToAimPoint then Closest = PartToAim; DistanceToAimPoint = FovDistance end
                     end
                 end
             end
