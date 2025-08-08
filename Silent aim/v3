@@ -319,7 +319,6 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
             else
                 return currentTargetPart.CFrame
             end
-        -- 明确地将视角控制所需的 X 和 Y 坐标原样返回，避免冲突
         elseif lowerIndex == "x" then
             return self.X
         elseif lowerIndex == "y" then
