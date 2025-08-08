@@ -29,7 +29,8 @@ local SilentAimSettings = {
     IndicatorRainbowSpeed = 1,
     MaxDistance = 500,
     Tracer_Y_Offset = 0,
-    OptimizeForDistance = false, -- 新增：优化选择功能
+    OptimizeForDistance = false,
+    ShowTargetInfo = false, -- 新增：目标信息显示
     TargetMode = "玩家"
 }
 
@@ -71,6 +72,16 @@ local distance_text = Drawing.new("Text")
 distance_text.Visible = false; distance_text.ZIndex = 1001; distance_text.Font = Drawing.Fonts.Plex; distance_text.Size = 14; distance_text.Color = Color3.fromRGB(255, 255, 255); distance_text.Center = true; distance_text.Outline = true
 local tracer_line = Drawing.new("Line")
 tracer_line.Visible = false; tracer_line.ZIndex = 998; tracer_line.Color = Color3.fromRGB(255, 255, 0); tracer_line.Thickness = 1; tracer_line.Transparency = 1
+
+-- 新增：目标信息UI元素
+local target_info_bg = Drawing.new("Square")
+target_info_bg.Visible = false; target_info_bg.ZIndex = 1002; target_info_bg.Color = Color3.fromRGB(0, 0, 0); target_info_bg.Thickness = 0; target_info_bg.Filled = true; target_info_bg.Transparency = 0.5
+local target_info_name = Drawing.new("Text")
+target_info_name.Visible = false; target_info_name.ZIndex = 1003; target_info_name.Font = Drawing.Fonts.Plex; target_info_name.Size = 14; target_info_name.Color = Color3.fromRGB(255, 255, 255); target_info_name.Center = false; target_info_name.Outline = true
+local target_info_health = Drawing.new("Text")
+target_info_health.Visible = false; target_info_health.ZIndex = 1003; target_info_health.Font = Drawing.Fonts.Plex; target_info_health.Size = 14; target_info_health.Color = Color3.fromRGB(10, 255, 10); target_info_health.Center = false; target_info_health.Outline = true
+local target_info_dist = Drawing.new("Text")
+target_info_dist.Visible = false; target_info_dist.ZIndex = 1003; target_info_dist.Font = Drawing.Fonts.Plex; target_info_dist.Size = 14; target_info_dist.Color = Color3.fromRGB(255, 255, 255); target_info_dist.Center = false; target_info_dist.Outline = true
 
 local FOVCircleGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 FOVCircleGui.Name = "FOVCircleGui"; FOVCircleGui.ResetOnSpawn = false; FOVCircleGui.IgnoreGuiInset = true; FOVCircleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -250,7 +261,15 @@ end
 
 function hideAllIndicators()
     target_indicator_circle.Visible = false
+    distance_text.Visible = false
     for _, line in ipairs(target_indicator_lines) do line.Visible = false end
+end
+
+function hideTargetInfo()
+    target_info_bg.Visible = false
+    target_info_name.Visible = false
+    target_info_health.Visible = false
+    target_info_dist.Visible = false
 end
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -308,9 +327,11 @@ local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("Prediction")
 PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target Prediction", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
-local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("Optimization")
+local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("Misc Settings")
 MiscGroupBox:AddToggle("OptimizeToggle", { Text = "优先选择最近目标", Default = SilentAimSettings.OptimizeForDistance, Tooltip = "当FOV内有多个目标时, 优先瞄准物理距离最近的目标" })
 Toggles.OptimizeToggle:OnChanged(function(Value) SilentAimSettings.OptimizeForDistance = Value end)
+MiscGroupBox:AddToggle("ShowTargetInfoToggle", { Text = "显示目标信息", Default = SilentAimSettings.ShowTargetInfo, Tooltip = "在目标旁边显示名字, 血量和距离" })
+Toggles.ShowTargetInfoToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetInfo = Value end)
 
 
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
@@ -353,49 +374,87 @@ resume(create(function()
             end
         end
 
-        if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
+        local showIndicator = Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart
+        local showInfo = Toggles.ShowTargetInfoToggle.Value and isEnabled and currentTargetPart
+
+        if showIndicator or showInfo then
             local RootToViewportPoint, IsOnScreen = getPositionOnScreen(currentTargetPart.Position)
-            hideAllIndicators()
             if IsOnScreen then
-                local indicatorStyle = Options.IndicatorStyleDropdown.Value
-                local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
-                local finalIndicatorColor
-                
-                local isTargetVisible = IsObjectVisible(currentTargetPart.Parent)
-
-                if isTargetVisible then
-                    finalIndicatorColor = Color3.fromRGB(0, 255, 0)
-                    indicatorRadius = indicatorRadius * 0.6
-                elseif SilentAimSettings.IndicatorRainbowEnabled then
-                    finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
-                else
-                    finalIndicatorColor = Options.TargetIndicatorColorPicker.Value
+                if showIndicator then
+                    local indicatorStyle = Options.IndicatorStyleDropdown.Value
+                    local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
+                    local finalIndicatorColor
+                    local isTargetVisible = IsObjectVisible(currentTargetPart.Parent)
+    
+                    if isTargetVisible then
+                        finalIndicatorColor = Color3.fromRGB(0, 255, 0)
+                        indicatorRadius = indicatorRadius * 0.6
+                    elseif SilentAimSettings.IndicatorRainbowEnabled then
+                        finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
+                    else
+                        finalIndicatorColor = Options.TargetIndicatorColorPicker.Value
+                    end
+                    
+                    if indicatorStyle == "Circle" then
+                        target_indicator_circle.Visible = true; target_indicator_circle.Color = finalIndicatorColor; target_indicator_circle.Radius = indicatorRadius; target_indicator_circle.Position = RootToViewportPoint
+                    elseif indicatorStyle == "Triangle" then
+                        local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 3)
+                        for i = 1, 3 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[i]; line.To = points[i % 3 + 1] end
+                    elseif indicatorStyle == "Pentagram" then
+                        local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 5)
+                        local pentagram_order = {1, 3, 5, 2, 4}
+                        for i = 1, 5 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]] end
+                    end
+    
+                    if not showInfo then -- 仅在不显示新信息框时，才显示旧的距离文本
+                        distance_text.Visible = true
+                        local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if localRoot then
+                            distance_text.Text = string.format("[%dm]", math.floor((localRoot.Position - currentTargetPart.Position).Magnitude))
+                            distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - indicatorRadius - 8)
+                        else
+                            distance_text.Visible = false
+                        end
+                    else
+                        distance_text.Visible = false
+                    end
                 end
-                
-                if indicatorStyle == "Circle" then
-                    target_indicator_circle.Visible = true; target_indicator_circle.Color = finalIndicatorColor; target_indicator_circle.Radius = indicatorRadius; target_indicator_circle.Position = RootToViewportPoint
-                elseif indicatorStyle == "Triangle" then
-                    local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 3)
-                    for i = 1, 3 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[i]; line.To = points[i % 3 + 1] end
-                elseif indicatorStyle == "Pentagram" then
-                    local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 5)
-                    local pentagram_order = {1, 3, 5, 2, 4}
-                    for i = 1, 5 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]] end
-                end
 
-                distance_text.Visible = true
-                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if localRoot then
-                    distance_text.Text = string.format("[%dm]", math.floor((localRoot.Position - currentTargetPart.Position).Magnitude))
-                    distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - indicatorRadius - 8)
-                else
-                    distance_text.Visible = false
+                if showInfo then
+                    local targetCharacter = currentTargetPart.Parent
+                    local humanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+                    local player = targetCharacter and Players:GetPlayerFromCharacter(targetCharacter)
+                    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+                    if humanoid and localRoot then
+                        local targetName = player and player.Name or targetCharacter.Name
+                        local health = math.floor(humanoid.Health)
+                        local dist = math.floor((localRoot.Position - currentTargetPart.Position).Magnitude)
+                        
+                        target_info_name.Text = targetName
+                        target_info_health.Text = string.format("血量: %d", health)
+                        target_info_dist.Text = string.format("距离: %dm", dist)
+
+                        local infoPos = RootToViewportPoint + Vector2.new(SilentAimSettings.TargetIndicatorRadius + 5, -22)
+                        target_info_bg.Position = infoPos
+                        target_info_bg.Size = Vector2.new(120, 50)
+                        target_info_name.Position = infoPos + Vector2.new(5, 5)
+                        target_info_health.Position = infoPos + Vector2.new(5, 20)
+                        target_info_dist.Position = infoPos + Vector2.new(5, 35)
+
+                        target_info_bg.Visible = true
+                        target_info_name.Visible = true
+                        target_info_health.Visible = true
+                        target_info_dist.Visible = true
+                    else
+                        hideTargetInfo()
+                    end
                 end
             else
-                hideAllIndicators(); distance_text.Visible = false
+                hideAllIndicators(); hideTargetInfo()
             end
         else
-            hideAllIndicators(); distance_text.Visible = false
+            hideAllIndicators(); hideTargetInfo()
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
@@ -470,6 +529,8 @@ end))
 
 Library:OnUnload(function()
     FOVCircleGui:Destroy()
+    hideAllIndicators()
+    hideTargetInfo()
 end)
 
 ThemeManager:SetLibrary(Library)
