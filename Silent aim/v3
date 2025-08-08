@@ -60,7 +60,6 @@ local currentTargetPart = nil
 local currentRotationAngle = 0
 local currentIndicatorHue = 0
 
--- 创建绘图对象
 local target_indicator_circle = Drawing.new("Circle")
 target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
 local target_indicator_lines = {}
@@ -134,7 +133,10 @@ function getClosestPlayer()
             if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
                 if (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
                     if not (SilentAimSettings.VisibleCheck and not IsPlayerVisible(Player)) then
-                        local PartToAim = Character:FindFirstChild(SilentAimSettings.TargetPart) or Character:FindFirstChild("HumanoidRootPart")
+                        local TargetPartName = SilentAimSettings.TargetPart
+                        local PartToAim = FindFirstChild(Character, TargetPartName)
+                        if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
+                        
                         if PartToAim then
                             local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
                             if OnScreen then
@@ -306,9 +308,6 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
 end))
 
 local oldIndex
--- [[[[[[[[ FIX START: MOVEMENT BUG ]]]]]]]]
--- 修正了 __index 钩子，以解决第三人称移动/镜头卡住的问题
--- 现在它只在必要时拦截 "Hit" 和 "Target"，并放行所有其他属性（如X, Y）的访问
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
     if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and currentTargetPart then
         local lowerIndex = Index:lower()
@@ -320,11 +319,17 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
             else
                 return currentTargetPart.CFrame
             end
+        -- 明确地将视角控制所需的 X 和 Y 坐标原样返回，避免冲突
+        elseif lowerIndex == "x" then
+            return self.X
+        elseif lowerIndex == "y" then
+            return self.Y
+        elseif lowerIndex == "unitray" then
+            return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit)
         end
     end
     return oldIndex(self, Index)
 end))
--- [[[[[[[[ FIX END: MOVEMENT BUG ]]]]]]]]
 
 local oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
     if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
