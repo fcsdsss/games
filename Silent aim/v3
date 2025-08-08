@@ -16,23 +16,22 @@ local SilentAimSettings = {
     SilentAimMethod = "Raycast",
     FOVRadius = 130,
     FOVVisible = true,
-    FOVShape = "Circle",
-    FOVColor = Color3.fromRGB(54, 57, 241),
     ShowSilentAimTarget = false,
-    TargetIndicatorShape = "Circle",
-    TargetIndicatorColor = Color3.fromRGB(255, 0, 0),
-    TargetIndicatorRadius = 20,
     ShowTracer = false,
     MouseHitPrediction = false,
     MouseHitPredictionAmount = 0.165,
     HitChance = 100,
     FixedFOV = true,
+    TargetIndicatorRadius = 20,
+    IndicatorRotationEnabled = false, -- 新增：旋转开关
+    IndicatorRotationSpeed = 1,       -- 新增：旋转速度
     MaxDistance = 500,
     Tracer_Y_Offset = 0
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
 local MainFileName = "UniversalSilentAim"
+local SelectedFile, FileToSave = "", ""
 
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
@@ -44,10 +43,13 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
+local GetChildren = game.GetChildren
 local GetPlayers = Players.GetPlayers
 local WorldToViewportPoint = Camera.WorldToViewportPoint
+local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
 local FindFirstChild = game.FindFirstChild
 local RenderStepped = RunService.RenderStepped
+local GuiInset = GuiService.GetGuiInset
 local GetMouseLocation = UserInputService.GetMouseLocation
 
 local resume = coroutine.resume
@@ -55,10 +57,25 @@ local create = coroutine.create
 
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
-local currentTargetPart = nil
 
-local FOVShapeObjects = {}
-local TargetIndicatorObjects = {}
+local currentTargetPart = nil
+local currentRotationAngle = 0 -- 用于存储当前旋转角度
+
+-- 创建绘图对象
+local target_indicator_circle = Drawing.new("Circle")
+target_indicator_circle.Visible = false
+target_indicator_circle.ZIndex = 1000
+target_indicator_circle.Thickness = 2
+target_indicator_circle.Filled = false
+
+local target_indicator_lines = {}
+for i = 1, 5 do -- 五芒星最多需要5条线
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.ZIndex = 1000
+    line.Thickness = 2
+    table.insert(target_indicator_lines, line)
+end
 
 local distance_text = Drawing.new("Text")
 distance_text.Visible = false
@@ -76,6 +93,28 @@ tracer_line.Color = Color3.fromRGB(255, 255, 0)
 tracer_line.Thickness = 1
 tracer_line.Transparency = 1
 
+local FOVCircleGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+FOVCircleGui.Name = "FOVCircleGui"
+FOVCircleGui.ResetOnSpawn = false
+FOVCircleGui.IgnoreGuiInset = true
+FOVCircleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local FOVCircleFrame = Instance.new("Frame", FOVCircleGui)
+FOVCircleFrame.Name = "FOVCircleFrame"
+FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+FOVCircleFrame.BackgroundTransparency = 1
+
+local FOVStroke = Instance.new("UIStroke", FOVCircleFrame)
+FOVStroke.Name = "FOVStroke"
+FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+FOVStroke.Thickness = 1
+FOVStroke.Transparency = 0.5
+
+local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
+FOVCorner.Name = "FOVCorner"
+FOVCorner.CornerRadius = UDim.new(1, 0)
+
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
     FindPartOnRayWithWhitelist = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean"} },
@@ -90,71 +129,21 @@ function CalculateChance(Percentage)
 end
 
 do
-    if not isfolder(MainFileName) then makefolder(MainFileName) end
+    if not isfolder(MainFileName) then
+        makefolder(MainFileName);
+    end
+
     if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then
         makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
     end
 end
 
-local function ClearDrawingObjects(objectTable)
-    for i = #objectTable, 1, -1 do
-        local obj = objectTable[i]
-        if obj and obj.Remove then
-            obj:Remove()
-        end
-        table.remove(objectTable, i)
-    end
-end
-
-function DrawShape(objectTable, center, radius, shape, color, thickness)
-    thickness = thickness or 1
-    local function create_line(from, to)
-        local line = Drawing.new("Line")
-        line.Thickness = thickness
-        line.Color = color
-        line.From = from
-        line.To = to
-        line.Visible = true
-        table.insert(objectTable, line)
-    end
-    if shape == "Circle" then
-        local circle = Drawing.new("Circle")
-        circle.Thickness = thickness
-        circle.Color = color
-        circle.Radius = radius
-        circle.Position = center
-        circle.Filled = false
-        circle.Visible = true
-        table.insert(objectTable, circle)
-    elseif shape == "Triangle" then
-        local points = {
-            center + Vector2.new(0, -radius),
-            center + Vector2.new(-radius * 0.866, radius * 0.5),
-            center + Vector2.new(radius * 0.866, radius * 0.5)
-        }
-        create_line(points[1], points[2])
-        create_line(points[2], points[3])
-        create_line(points[3], points[1])
-    elseif shape == "Pentagram" then
-        local points = {}
-        for i = 0, 4 do
-            local angle = math.rad(i * 72 - 90)
-            points[i+1] = center + Vector2.new(math.cos(angle) * radius, math.sin(angle) * radius)
-        end
-        create_line(points[1], points[3])
-        create_line(points[3], points[5])
-        create_line(points[5], points[2])
-        create_line(points[2], points[4])
-        create_line(points[4], points[1])
-    end
-end
-
-local function getPositionOnScreen(Vector)
+function getPositionOnScreen(Vector)
     local Vec3, OnScreen = WorldToViewportPoint(Camera, Vector)
     return Vector2.new(Vec3.X, Vec3.Y), OnScreen
 end
 
-local function ValidateArguments(Args, RayMethod)
+function ValidateArguments(Args, RayMethod)
     local Matches = 0
     if #Args < RayMethod.ArgCountRequired then return false end
     for Pos, Argument in next, Args do
@@ -163,15 +152,15 @@ local function ValidateArguments(Args, RayMethod)
     return Matches >= RayMethod.ArgCountRequired
 end
 
-local function getDirection(Origin, Position)
+function getDirection(Origin, Position)
     return (Position - Origin).Unit * 1000
 end
 
-local function getMousePosition()
+function getMousePosition()
     return GetMouseLocation(UserInputService)
 end
 
-local function IsPlayerVisible(Player)
+function IsPlayerVisible(Player)
     local localCharacter = LocalPlayer.Character
     local targetCharacter = Player.Character
     if not (localCharacter and targetCharacter) then return false end
@@ -185,18 +174,19 @@ local function IsPlayerVisible(Player)
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {localCharacter}
     local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 5), raycastParams)
-    return not raycastResult or raycastResult.Instance:IsDescendantOf(targetCharacter)
+    if not raycastResult or raycastResult.Instance:IsDescendantOf(targetCharacter) then return true end
+    return false
 end
 
-local function getClosestPlayer()
-    local Closest, DistanceToAimPoint = nil, SilentAimSettings.FOVRadius
+function getClosestPlayer()
+    local Closest = nil
+    local DistanceToAimPoint = SilentAimSettings.FOVRadius
     local AimPoint
     local LocalPlayerCharacter = LocalPlayer.Character
     if not LocalPlayerCharacter then return nil end
     local localRoot = FindFirstChild(LocalPlayerCharacter, "HumanoidRootPart")
     if not localRoot then return nil end
     if SilentAimSettings.FixedFOV then AimPoint = Camera.ViewportSize / 2 else AimPoint = getMousePosition() end
-
     for _, Player in next, GetPlayers(Players) do
         if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
             local Character = Player.Character
@@ -209,16 +199,12 @@ local function getClosestPlayer()
                     if Humanoid and Humanoid.Health > 0 then
                         local TargetPartName = SilentAimSettings.TargetPart
                         local PartToAim = FindFirstChild(Character, TargetPartName)
-                        if TargetPartName == "Random" then
-                            PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]
-                        end
+                        if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
                         if PartToAim then
                             local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
                             if OnScreen then
                                 local FovDistance = (AimPoint - ScreenPosition).Magnitude
-                                if FovDistance <= DistanceToAimPoint then
-                                    Closest, DistanceToAimPoint = PartToAim, FovDistance
-                                end
+                                if FovDistance <= DistanceToAimPoint then Closest = PartToAim; DistanceToAimPoint = FovDistance end
                             end
                         end
                     end
@@ -229,145 +215,178 @@ local function getClosestPlayer()
     return Closest
 end
 
+-- 新增的辅助函数
+function getPolygonPoints(center, radius, sides)
+    local points = {}
+    local rotationOffset = SilentAimSettings.IndicatorRotationEnabled and currentRotationAngle or 0
+    for i = 1, sides do
+        local angle = (i - 1) * (2 * math.pi / sides) - (math.pi / 2) + rotationOffset
+        local x = center.X + radius * math.cos(angle)
+        local y = center.Y + radius * math.sin(angle)
+        table.insert(points, Vector2.new(x, y))
+    end
+    return points
+end
+
+function hideAllIndicators()
+    target_indicator_circle.Visible = false
+    for _, line in pairs(target_indicator_lines) do
+        line.Visible = false
+    end
+end
+
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
-local Options, Toggles = Library.Options, Library.Toggles
-local Window = Library:CreateWindow({Title = "Universal Silent Aim", Footer = "v2版本改自vapev4", Center = true, AutoShow = true})
-local Tabs = {Main = Window:AddTab("Main", "user"), ["UI Settings"] = Window:AddTab("UI Settings", "settings")}
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v2版本改自vapev4", Center = true, AutoShow = true })
+local Tabs = { Main = Window:AddTab("Main", "user"), ["UI Settings"] = Window:AddTab("UI Settings", "settings") }
 local MainGroupBox = Tabs.Main:AddLeftGroupbox("Main Settings", "boxes")
 
-MainGroupBox:AddToggle("EnabledToggle",{Text = "Enabled",Default = SilentAimSettings.Enabled}):AddKeyPicker("EnabledKeybind",{Default = SilentAimSettings.ToggleKey,SyncToggleState = true,Mode = "Toggle"})
-Toggles.EnabledToggle:OnChanged(function(v) SilentAimSettings.Enabled = v end)
-MainGroupBox:AddToggle("TeamCheckToggle",{Text = "Team Check",Default = SilentAimSettings.TeamCheck})
-Toggles.TeamCheckToggle:OnChanged(function(v) SilentAimSettings.TeamCheck = v end)
-MainGroupBox:AddToggle("VisibleCheckToggle",{Text = "Visible Check",Default = SilentAimSettings.VisibleCheck})
-Toggles.VisibleCheckToggle:OnChanged(function(v) SilentAimSettings.VisibleCheck = v end)
-MainGroupBox:AddDropdown("TargetPartDropdown",{Values = {"Head", "HumanoidRootPart", "Random"},Default = SilentAimSettings.TargetPart,Text = "Target Part"})
-Options.TargetPartDropdown:OnChanged(function(v) SilentAimSettings.TargetPart = v end)
-MainGroupBox:AddDropdown("MethodDropdown",{Text = "Silent Aim Method",Default = SilentAimSettings.SilentAimMethod,Values = {"Raycast", "FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target"}})
-Options.MethodDropdown:OnChanged(function(v) SilentAimSettings.SilentAimMethod = v end)
-MainGroupBox:AddSlider('HitChanceSlider',{Text = 'Hit chance',Default = SilentAimSettings.HitChance,Min = 0,Max = 100,Rounding = 1,Suffix = "%"})
-Options.HitChanceSlider:OnChanged(function(v) SilentAimSettings.HitChance = v end)
-MainGroupBox:AddSlider('MaxDistanceSlider',{Text = 'Max Distance',Default = SilentAimSettings.MaxDistance,Min = 10,Max = 2000,Rounding = 0,Suffix = "studs"})
-Options.MaxDistanceSlider:OnChanged(function(v) SilentAimSettings.MaxDistance = v end)
+MainGroupBox:AddToggle("EnabledToggle", { Text = "Enabled", Default = SilentAimSettings.Enabled, }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
+Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
+MainGroupBox:AddToggle("TeamCheckToggle", { Text = "Team Check", Default = SilentAimSettings.TeamCheck, }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
+MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "Visible Check", Default = SilentAimSettings.VisibleCheck, }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "Target Part", }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
+MainGroupBox:AddDropdown("MethodDropdown", { Text = "Silent Aim Method", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
+MainGroupBox:AddSlider('HitChanceSlider', { Text = 'Hit chance', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
+MainGroupBox:AddSlider('MaxDistanceSlider', { Text = 'Max Distance', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
-VisualsGroupBox:AddToggle("FOVVisibleToggle",{Text = "Show FOV",Default = SilentAimSettings.FOVVisible}):AddColorPicker("FOVColorPicker",{Default = SilentAimSettings.FOVColor,Title = "FOV Color"})
-Toggles.FOVVisibleToggle:OnChanged(function(v) SilentAimSettings.FOVVisible = v end)
-Options.FOVColorPicker:OnChanged(function(v) SilentAimSettings.FOVColor = v end)
-VisualsGroupBox:AddDropdown("FOVShapeDropdown",{Text = "FOV Style",Default = SilentAimSettings.FOVShape,Values = {"Circle", "Triangle", "Pentagram"}})
-Options.FOVShapeDropdown:OnChanged(function(v) SilentAimSettings.FOVShape = v end)
-VisualsGroupBox:AddSlider("FOVRadiusSlider",{Text = "FOV Radius",Min = 10,Max = 1000,Default = SilentAimSettings.FOVRadius,Rounding = 0})
-Options.FOVRadiusSlider:OnChanged(function(v) SilentAimSettings.FOVRadius = v end)
-VisualsGroupBox:AddToggle("FixedFOVToggle",{Text = "Fixed FOV (for Mobile)",Default = SilentAimSettings.FixedFOV})
-Toggles.FixedFOVToggle:OnChanged(function(v) SilentAimSettings.FixedFOV = v end)
+VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible, }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV Circle Color" })
+Toggles.FOVVisibleToggle:OnChanged(function(Value) FOVCircleGui.Enabled = Value; SilentAimSettings.FOVVisible = Value end)
+Options.FOVColorPicker:OnChanged(function(Value) FOVStroke.Color = Value end)
+VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 }):OnChanged(function(Value) FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2); SilentAimSettings.FOVRadius = Value end)
+VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "Fixed FOV (for Mobile)", Default = SilentAimSettings.FixedFOV, }):OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
 
-VisualsGroupBox:AddToggle("ShowTargetToggle",{Text = "Show Target Indicator",Default = SilentAimSettings.ShowSilentAimTarget}):AddColorPicker("TargetIndicatorColorPicker",{Default = SilentAimSettings.TargetIndicatorColor,Title = "Target Indicator Color"})
-Toggles.ShowTargetToggle:OnChanged(function(v) SilentAimSettings.ShowSilentAimTarget = v end)
-Options.TargetIndicatorColorPicker:OnChanged(function(v) SilentAimSettings.TargetIndicatorColor = v end)
-VisualsGroupBox:AddDropdown("TargetIndicatorShapeDropdown",{Text = "Indicator Style",Default = SilentAimSettings.TargetIndicatorShape,Values = {"Circle", "Triangle", "Pentagram"}})
-Options.TargetIndicatorShapeDropdown:OnChanged(function(v) SilentAimSettings.TargetIndicatorShape = v end)
-VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider",{Text = "Indicator Size",Min = 5,Max = 50,Default = SilentAimSettings.TargetIndicatorRadius,Rounding = 0})
-Options.TargetIndicatorRadiusSlider:OnChanged(function(v) SilentAimSettings.TargetIndicatorRadius = v end)
+VisualsGroupBox:AddToggle("ShowTargetToggle", { Text = "Show Target Indicator", Default = SilentAimSettings.ShowSilentAimTarget, }):AddColorPicker("TargetIndicatorColorPicker", { Default = Color3.fromRGB(255, 0, 0), Title = "Target Indicator Color" })
+Toggles.ShowTargetToggle:OnChanged(function(Value) SilentAimSettings.ShowSilentAimTarget = Value end)
+Options.TargetIndicatorColorPicker:OnChanged(function(Value)
+    target_indicator_circle.Color = Value
+    for _, line in pairs(target_indicator_lines) do line.Color = Value end
+end)
 
-VisualsGroupBox:AddToggle("ShowTracerToggle",{Text = "Show Target Tracer",Default = SilentAimSettings.ShowTracer}):AddColorPicker("TracerColorPicker",{Default = tracer_line.Color,Title = "Tracer Color"})
-Toggles.ShowTracerToggle:OnChanged(function(v) SilentAimSettings.ShowTracer = v end)
-Options.TracerColorPicker:OnChanged(function(v) tracer_line.Color = v end)
-VisualsGroupBox:AddSlider('TracerYOffsetSlider',{Text = 'Tracer Y-Axis Offset',Default = SilentAimSettings.Tracer_Y_Offset,Min = -10,Max = 10,Rounding = 3,Suffix = " studs"})
-Options.TracerYOffsetSlider:OnChanged(function(v) SilentAimSettings.Tracer_Y_Offset = v end)
+VisualsGroupBox:AddDropdown("IndicatorStyleDropdown", { Text = "Indicator Style", Values = {"Circle", "Triangle", "Pentagram"}, Default = "Circle" })
+VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "Indicator Size", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0}):OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
+
+VisualsGroupBox:AddToggle("IndicatorRotationToggle", { Text = "Enable Indicator Rotation", Default = SilentAimSettings.IndicatorRotationEnabled }):AddSlider("IndicatorRotationSpeedSlider", { Text = "Rotation Speed", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRotationSpeed, Rounding = 1, Compact = true })
+Toggles.IndicatorRotationToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRotationEnabled = Value end)
+Options.IndicatorRotationSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRotationSpeed = Value end)
+
+VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "Show Target Tracer", Default = SilentAimSettings.ShowTracer, }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "Tracer Color" })
+Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
+Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
+VisualsGroupBox:AddSlider('TracerYOffsetSlider', { Text = 'Tracer Y-Axis Offset', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
 
 local PredictionGroupBox = Tabs.Main:AddRightGroupbox("Prediction")
-PredictionGroupBox:AddToggle("PredictionToggle",{Text = "Mouse.Hit/Target Prediction",Default = SilentAimSettings.MouseHitPrediction})
-Toggles.PredictionToggle:OnChanged(function(v) SilentAimSettings.MouseHitPrediction = v end)
-PredictionGroupBox:AddSlider("PredictionAmountSlider",{Text = "Prediction Amount",Min = 0,Max = 1,Default = SilentAimSettings.MouseHitPredictionAmount,Rounding = 3})
-Options.PredictionAmountSlider:OnChanged(function(v) SilentAimSettings.MouseHitPredictionAmount, PredictionAmount = v, v end)
+PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target Prediction", Default = SilentAimSettings.MouseHitPrediction, }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
+PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
+
+FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
+FOVStroke.Color = Options.FOVColorPicker.Value
+FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
 
 resume(create(function()
     RenderStepped:Connect(function()
+        if Toggles.IndicatorRotationToggle.Value then
+            currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2)
+        end
+
         local isEnabled = Toggles.EnabledToggle.Value
-        currentTargetPart = isEnabled and getClosestPlayer() or nil
-        
-        ClearDrawingObjects(TargetIndicatorObjects)
-        distance_text.Visible = false
+        if isEnabled then currentTargetPart = getClosestPlayer() else currentTargetPart = nil end
+
         if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
             local RootToViewportPoint, IsOnScreen = WorldToViewportPoint(Camera, currentTargetPart.Position)
+            hideAllIndicators()
             if IsOnScreen then
-                local indicatorColor = SilentAimSettings.TargetIndicatorColor
+                local indicatorStyle = Options.IndicatorStyleDropdown.Value
                 local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
+                local indicatorColor = Options.TargetIndicatorColorPicker.Value
+                
                 local targetPlayer = Players:GetPlayerFromCharacter(currentTargetPart.Parent)
                 if targetPlayer and IsPlayerVisible(targetPlayer) then
                     indicatorColor = Color3.fromRGB(0, 255, 0)
-                    indicatorRadius = indicatorRadius * 0.7
+                    indicatorRadius = indicatorRadius * 0.6
                 end
-                
-                DrawShape(TargetIndicatorObjects, Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y), indicatorRadius, SilentAimSettings.TargetIndicatorShape, indicatorColor, 2)
-                
+
+                if indicatorStyle == "Circle" then
+                    target_indicator_circle.Visible = true
+                    target_indicator_circle.Color = indicatorColor
+                    target_indicator_circle.Radius = indicatorRadius
+                    target_indicator_circle.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y)
+                elseif indicatorStyle == "Triangle" then
+                    local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 3)
+                    for i = 1, 3 do
+                        local line = target_indicator_lines[i]
+                        line.Visible = true; line.Color = indicatorColor; line.From = points[i]; line.To = points[i % 3 + 1]
+                    end
+                elseif indicatorStyle == "Pentagram" then
+                    local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 5)
+                    local pentagram_order = {1, 3, 5, 2, 4}
+                    for i = 1, 5 do
+                         local line = target_indicator_lines[i]
+                         line.Visible = true; line.Color = indicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]]
+                    end
+                end
+
+                distance_text.Visible = true
                 local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if localRoot then
-                    distance_text.Visible = true
                     local distance = (localRoot.Position - currentTargetPart.Position).Magnitude
                     distance_text.Text = string.format("[%dm]", math.floor(distance))
-                    distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - SilentAimSettings.TargetIndicatorRadius - 8)
+                    distance_text.Position = Vector2.new(RootToViewportPoint.X, RootToViewportPoint.Y - indicatorRadius - 8)
+                else
+                    distance_text.Visible = false
                 end
+            else
+                hideAllIndicators(); distance_text.Visible = false
             end
+        else
+            hideAllIndicators(); distance_text.Visible = false
         end
 
-        tracer_line.Visible = false
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
             local targetCharacter = currentTargetPart.Parent
             local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
             local tracerTargetPosition = (targetHead and targetHead.Position) or currentTargetPart.Position
-            local finalTracerPosition = tracerTargetPosition - Vector3.new(0, SilentAimSettings.Tracer_Y_Offset, 0)
+            local y_offset = SilentAimSettings.Tracer_Y_Offset
+            local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
             local targetScreenPos, IsOnScreen = getPositionOnScreen(finalTracerPosition)
-            if IsOnScreen then
-                tracer_line.Visible = true
-                tracer_line.From = Camera.ViewportSize / 2
-                tracer_line.To = targetScreenPos
-                tracer_line.Color = Options.TracerColorPicker.Value
-            end
+            tracer_line.Visible = IsOnScreen
+            if IsOnScreen then tracer_line.From = Camera.ViewportSize / 2; tracer_line.To = targetScreenPos; tracer_line.Color = Options.TracerColorPicker.Value end
+        else
+            tracer_line.Visible = false
         end
-
-        ClearDrawingObjects(FOVShapeObjects)
-        if SilentAimSettings.FOVVisible and isEnabled then
-            local fovCenter = SilentAimSettings.FixedFOV and Camera.ViewportSize / 2 or getMousePosition()
-            DrawShape(FOVShapeObjects, fovCenter, SilentAimSettings.FOVRadius, SilentAimSettings.FOVShape, SilentAimSettings.FOVColor, 1)
+        
+        if Toggles.FOVVisibleToggle.Value then
+            if Toggles.FixedFOVToggle.Value then FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5); FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+            else local mousePos = getMousePosition(); FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5); FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y) end
         end
     end)
 end))
 
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
-    local Method, Arguments, self = getnamecallmethod(), {...}, ...[1]
+    local Method = getnamecallmethod()
+    local Arguments = {...}
+    local self = Arguments[1]
     if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
         local currentMethod = SilentAimSettings.SilentAimMethod
         if currentTargetPart then
             if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
-                    local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
-                    return oldNamecall(unpack(Arguments))
-                end
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end
             elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
-                    local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
-                    return oldNamecall(unpack(Arguments))
-                end
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end
             elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
-                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
-                    local A_Ray = Arguments[2]
-                    Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
-                    return oldNamecall(unpack(Arguments))
-                end
+                if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end
             elseif Method == "Raycast" and currentMethod == Method then
-                if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                    Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
-                    return oldNamecall(unpack(Arguments))
-                end
+                if ValidateArguments(Arguments, ExpectedArguments.Raycast) then Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position); return oldNamecall(unpack(Arguments)) end
             elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
-                return Ray.new(Camera.CFrame.Position, (currentTargetPart.Position - Camera.CFrame.Position).Unit)
+                local origin = Camera.CFrame.Position; local direction = (currentTargetPart.Position - origin).Unit; return Ray.new(origin, direction)
             end
         end
     end
@@ -375,36 +394,40 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
 end))
 
 local oldIndex
+local oldRayNew
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
-    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and currentTargetPart then
-        if Index == "Target" or Index == "target" then return currentTargetPart end
-        if Index == "Hit" or Index == "hit" then return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * currentTargetPart.Velocity.magnitude * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame end
-        if Index == "X" or Index == "x" then return self.X end
-        if Index == "Y" or Index == "y" then return self.Y end
-        if Index == "UnitRay" then return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit) end
+    if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
+        if currentTargetPart then
+            if Index == "Target" or Index == "target" then return currentTargetPart
+            elseif Index == "Hit" or Index == "hit" then return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * currentTargetPart.Velocity.magnitude * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame
+            elseif Index == "X" or Index == "x" then return self.X
+            elseif Index == "Y" or Index == "y" then return self.Y
+            elseif Index == "UnitRay" then return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit) end
+        end
     end
     return oldIndex(self, Index)
 end))
 
-local oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
+oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
     if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
-        return oldRayNew(origin, getDirection(origin, currentTargetPart.Position))
+        local newDirectionVector = getDirection(origin, currentTargetPart.Position)
+        return oldRayNew(origin, newDirectionVector)
     end
     return oldRayNew(origin, direction)
 end))
 
 Library:OnUnload(function()
-    ClearDrawingObjects(FOVShapeObjects)
-    ClearDrawingObjects(TargetIndicatorObjects)
-    if distance_text and distance_text.Remove then distance_text:Remove() end
-    if tracer_line and tracer_line.Remove then tracer_line:Remove() end
+    FOVCircleGui:Destroy()
 end)
 
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
+
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 SaveManager:SetFolder("UniversalSilentAim/Configs")
+
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
+
 SaveManager:LoadAutoloadConfig()
