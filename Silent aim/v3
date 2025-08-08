@@ -482,7 +482,7 @@ resume(create(function()
                             end
                             if Toggles.ShowTargetHealthToggle.Value then
                                 local textObj = overhead_info_texts.Health
-                                textObj.Text = string.format("[%d HP]", health)
+                                textObj.Text = string.format("[%d ]", health)
                                 textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight))
                                 textObj.Visible = true
                                 linesDrawn = linesDrawn + 1
