@@ -25,8 +25,8 @@ local SilentAimSettings = {
     TargetIndicatorRadius = 20,
     IndicatorRotationEnabled = false,
     IndicatorRotationSpeed = 1,
-    IndicatorRainbowEnabled = false, -- 新增：彩虹颜色开关
-    IndicatorRainbowSpeed = 1,   -- 新增：彩虹颜色速度
+    IndicatorRainbowEnabled = false,
+    IndicatorRainbowSpeed = 1,
     MaxDistance = 500,
     Tracer_Y_Offset = 0
 }
@@ -58,7 +58,7 @@ local PredictionAmount = 0.165
 
 local currentTargetPart = nil
 local currentRotationAngle = 0
-local currentIndicatorHue = 0 -- 新增：用于存储当前颜色色调
+local currentIndicatorHue = 0
 
 -- 创建绘图对象
 local target_indicator_circle = Drawing.new("Circle")
@@ -201,14 +201,10 @@ VisualsGroupBox:AddToggle("IndicatorRotationToggle", { Text = "Enable Indicator 
 Toggles.IndicatorRotationToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRotationEnabled = Value end)
 VisualsGroupBox:AddSlider("IndicatorRotationSpeedSlider", { Text = "Rotation Speed", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRotationSpeed, Rounding = 1, Compact = true })
 Options.IndicatorRotationSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRotationSpeed = Value end)
-
--- [[[[[[[[ NEW FEATURE START ]]]]]]]]
 VisualsGroupBox:AddToggle("IndicatorRainbowToggle", { Text = "Enable Rainbow Color", Default = SilentAimSettings.IndicatorRainbowEnabled })
 Toggles.IndicatorRainbowToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowEnabled = Value end)
 VisualsGroupBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "Color Speed", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRainbowSpeed, Rounding = 1, Compact = true })
 Options.IndicatorRainbowSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowSpeed = Value end)
--- [[[[[[[[ NEW FEATURE END ]]]]]]]]
-
 VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "Show Target Tracer", Default = SilentAimSettings.ShowTracer }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "Tracer Color" })
 Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
 Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
@@ -310,15 +306,25 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
 end))
 
 local oldIndex
+-- [[[[[[[[ FIX START: MOVEMENT BUG ]]]]]]]]
+-- 修正了 __index 钩子，以解决第三人称移动/镜头卡住的问题
+-- 现在它只在必要时拦截 "Hit" 和 "Target"，并放行所有其他属性（如X, Y）的访问
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
     if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" and currentTargetPart then
-        if Index == "Target" or Index == "target" then return currentTargetPart
-        elseif Index == "Hit" or Index == "hit" then return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * PredictionAmount))) or currentTargetPart.CFrame
-        elseif Index == "UnitRay" then return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit)
+        local lowerIndex = Index:lower()
+        if lowerIndex == "target" then
+            return currentTargetPart
+        elseif lowerIndex == "hit" then
+            if SilentAimSettings.MouseHitPrediction then
+                return currentTargetPart.CFrame + (currentTargetPart.Velocity * PredictionAmount)
+            else
+                return currentTargetPart.CFrame
+            end
         end
     end
     return oldIndex(self, Index)
 end))
+-- [[[[[[[[ FIX END: MOVEMENT BUG ]]]]]]]]
 
 local oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
     if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
