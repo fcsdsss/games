@@ -287,7 +287,7 @@ Options.MethodDropdown:OnChanged(function(Value) SilentAimSettings.SilentAimMeth
 MainGroupBox:AddSlider('HitChanceSlider', { Text = 'Hit chance', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" })
 Options.HitChanceSlider:OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
 
-MainGroupBox:AddSlider('MaxDistanceSlider', { Text = 'Max Distance', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" })
+MainGroupBox:AddSlider('MaxDistanceSlider', { Text = 'Max Distance', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 5000, Rounding = 0, Suffix = "studs" })
 Options.MaxDistanceSlider:OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
