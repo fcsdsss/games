@@ -159,11 +159,10 @@ local function getClosestPlayer()
 
     for _, Player in ipairs(GetPlayers(Players)) do
         if Player ~= LocalPlayer then
-            if whitelistedPlayers and not whitelistedPlayers[Player.Name] then
-                continue
-            end
+            local isTeamSafe = not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team)
+            local isWhitelisted = not SilentAimSettings.WhitelistEnabled or (whitelistedPlayers and whitelistedPlayers[Player.Name])
 
-            if not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
+            if isTeamSafe and isWhitelisted then
                 local Character = Player.Character
                 if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
                     if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
