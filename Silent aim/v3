@@ -29,7 +29,7 @@ local SilentAimSettings = {
     IndicatorRainbowSpeed = 1,
     MaxDistance = 500,
     Tracer_Y_Offset = 0,
-    WhitelistEnabled = false,
+    OptimizeForDistance = false, -- 新增：优化选择功能
     TargetMode = "玩家"
 }
 
@@ -143,40 +143,33 @@ local function IsObjectVisible(model)
 end
 
 local function getClosestPlayer()
-    local Closest = nil
-    local MinFovDistance = SilentAimSettings.FOVRadius
-    local AimPoint
     local LocalPlayerCharacter = LocalPlayer.Character
     if not LocalPlayerCharacter then return nil, math.huge end
     local localRoot = FindFirstChild(LocalPlayerCharacter, "HumanoidRootPart")
     if not localRoot then return nil, math.huge end
+    
+    local AimPoint
     if SilentAimSettings.FixedFOV then AimPoint = Camera.ViewportSize / 2 else AimPoint = GetMouseLocation(UserInputService) end
 
+    local candidates = {}
+
     for _, Player in ipairs(GetPlayers(Players)) do
-        if Player == LocalPlayer then continue end
-        if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
-
-        if SilentAimSettings.WhitelistEnabled then
-            local whitelistedPlayers = Options.WhitelistDropdown.Value
-            if not (whitelistedPlayers and whitelistedPlayers[Player.Name]) then
-                continue
-            end
-        end
-
-        local Character = Player.Character
-        if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
-            if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
-                if (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
-                    local TargetPartName = SilentAimSettings.TargetPart
-                    local PartToAim = FindFirstChild(Character, TargetPartName)
-                    if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                    if PartToAim then
-                        local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
-                        if OnScreen then
-                            local FovDistance = (AimPoint - ScreenPosition).Magnitude
-                            if FovDistance < MinFovDistance then
-                                Closest = PartToAim
-                                MinFovDistance = FovDistance
+        if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
+            local Character = Player.Character
+            if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
+                if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
+                    local physicalDist = (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude
+                    if physicalDist <= SilentAimSettings.MaxDistance then
+                        local TargetPartName = SilentAimSettings.TargetPart
+                        local PartToAim = FindFirstChild(Character, TargetPartName)
+                        if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
+                        if PartToAim then
+                            local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
+                            if OnScreen then
+                                local fovDist = (AimPoint - ScreenPosition).Magnitude
+                                if fovDist <= SilentAimSettings.FOVRadius then
+                                    table.insert(candidates, {part = PartToAim, fov = fovDist, dist = physicalDist})
+                                end
                             end
                         end
                     end
@@ -184,40 +177,64 @@ local function getClosestPlayer()
             end
         end
     end
-    return Closest, MinFovDistance
+
+    if #candidates == 0 then return nil, math.huge end
+
+    table.sort(candidates, function(a, b)
+        if SilentAimSettings.OptimizeForDistance then
+            return a.dist < b.dist
+        else
+            return a.fov < b.fov
+        end
+    end)
+
+    return candidates[1].part, candidates[1].fov
 end
 
 local function getNPCTarget()
-    local Closest = nil
-    local MinFovDistance = SilentAimSettings.FOVRadius
-    local AimPoint
     local LocalPlayerCharacter = LocalPlayer.Character
     if not LocalPlayerCharacter then return nil, math.huge end
     local localRoot = FindFirstChild(LocalPlayerCharacter, "HumanoidRootPart")
     if not localRoot then return nil, math.huge end
+
+    local AimPoint
     if SilentAimSettings.FixedFOV then AimPoint = Camera.ViewportSize / 2 else AimPoint = GetMouseLocation(UserInputService) end
+
+    local candidates = {}
 
     for _, NPCModel in ipairs(npcList) do
         if NPCModel and NPCModel.PrimaryPart then
-            if SilentAimSettings.VisibleCheck and not IsObjectVisible(NPCModel) then continue end
-            if (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
-                local TargetPartName = SilentAimSettings.TargetPart
-                local PartToAim = FindFirstChild(NPCModel, TargetPartName)
-                if TargetPartName == "Random" then PartToAim = NPCModel[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                if PartToAim then
-                    local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
-                    if OnScreen then
-                        local FovDistance = (AimPoint - ScreenPosition).Magnitude
-                        if FovDistance < MinFovDistance then
-                            Closest = PartToAim
-                            MinFovDistance = FovDistance
+            if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(NPCModel)) then
+                local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
+                if physicalDist <= SilentAimSettings.MaxDistance then
+                    local TargetPartName = SilentAimSettings.TargetPart
+                    local PartToAim = FindFirstChild(NPCModel, TargetPartName)
+                    if TargetPartName == "Random" then PartToAim = NPCModel[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
+                    if PartToAim then
+                        local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
+                        if OnScreen then
+                            local fovDist = (AimPoint - ScreenPosition).Magnitude
+                            if fovDist <= SilentAimSettings.FOVRadius then
+                                table.insert(candidates, {part = PartToAim, fov = fovDist, dist = physicalDist})
+                            end
                         end
                     end
                 end
             end
         end
     end
-    return Closest, MinFovDistance
+
+    if #candidates == 0 then return nil, math.huge end
+
+    table.sort(candidates, function(a, b)
+        if SilentAimSettings.OptimizeForDistance then
+            return a.dist < b.dist
+        else
+            return a.fov < b.fov
+        end
+    end)
+    
+    return candidates[1].part, candidates[1].fov
 end
 
 
@@ -248,7 +265,7 @@ local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "
 
 local Tabs = {
     Main = Window:AddTab("Main", "user"),
-    Whitelist = Window:AddTab("Whitelist", "users"),
+    Misc = Window:AddTab("Misc", "options"),
     ["UI Settings"] = Window:AddTab("UI Settings", "settings"),
 }
 
@@ -291,10 +308,10 @@ local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("Prediction")
 PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target Prediction", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
-local WhitelistGroupBox = Tabs.Whitelist:AddLeftGroupbox("Whitelist Settings")
-WhitelistGroupBox:AddToggle("WhitelistToggle", { Text = "Enable Whitelist", Default = SilentAimSettings.WhitelistEnabled, Tooltip = "Only target players selected in the dropdown below" })
-Toggles.WhitelistToggle:OnChanged(function(Value) SilentAimSettings.WhitelistEnabled = Value end)
-WhitelistGroupBox:AddDropdown("WhitelistDropdown", { SpecialType = "Player", Multi = true, Text = "Whitelisted Players", ExcludeLocalPlayer = true, Searchable = true })
+local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("Optimization")
+MiscGroupBox:AddToggle("OptimizeToggle", { Text = "优先选择最近目标", Default = SilentAimSettings.OptimizeForDistance, Tooltip = "当FOV内有多个目标时, 优先瞄准物理距离最近的目标" })
+Toggles.OptimizeToggle:OnChanged(function(Value) SilentAimSettings.OptimizeForDistance = Value end)
+
 
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
 FOVStroke.Color = Options.FOVColorPicker.Value
