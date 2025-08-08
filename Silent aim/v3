@@ -289,7 +289,7 @@ local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
-    Misc = Window:AddTab("杂项", "options"),
+    Misc = Window:AddTab("杂项", "boxes"),
     ["UI Settings"] = Window:AddTab("UI设置", "settings"),
 }
 
