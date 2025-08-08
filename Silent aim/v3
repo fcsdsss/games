@@ -8,7 +8,7 @@ end
 
 local SilentAimSettings = {
     Enabled = false,
-    ClassName = "Universal Silent Aim - NPC Build",
+    ClassName = "Universal Silent Aim - Whitelist Build",
     ToggleKey = "RightAlt",
     TeamCheck = false,
     VisibleCheck = false,
@@ -153,7 +153,7 @@ local function getClosestPlayer()
     if SilentAimSettings.FixedFOV then AimPoint = Camera.ViewportSize / 2 else AimPoint = GetMouseLocation(UserInputService) end
 
     local playersToScan = {}
-    if SilentAimSettings.WhitelistEnabled and Options.WhitelistDropdown then
+    if SilentAimSettings.WhitelistEnabled and Options and Options.WhitelistDropdown then
         for playerName, isWhitelisted in pairs(Options.WhitelistDropdown.Value) do
             if isWhitelisted then
                 local player = Players:FindFirstChild(playerName)
@@ -331,11 +331,7 @@ resume(create(function()
                 
                 local isTargetVisible
                 local targetParent = currentTargetPart.Parent
-                if Players:GetPlayerFromCharacter(targetParent) then
-                    isTargetVisible = IsObjectVisible(targetParent)
-                else
-                    isTargetVisible = IsObjectVisible(targetParent) 
-                end
+                isTargetVisible = IsObjectVisible(targetParent) 
 
                 if isTargetVisible then
                     finalIndicatorColor = Color3.fromRGB(0, 255, 0)
