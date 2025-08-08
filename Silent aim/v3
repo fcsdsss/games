@@ -97,11 +97,12 @@ do
 end
 
 local function ClearDrawingObjects(objectTable)
-    for _, obj in pairs(objectTable) do
-        obj:Remove()
-    end
-    for i in pairs(objectTable) do
-        objectTable[i] = nil
+    for i = #objectTable, 1, -1 do
+        local obj = objectTable[i]
+        if obj and obj.Remove then
+            obj:Remove()
+        end
+        table.remove(objectTable, i)
     end
 end
 
