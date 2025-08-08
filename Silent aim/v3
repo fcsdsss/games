@@ -288,61 +288,60 @@ local Toggles = Library.Toggles
 local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v2版本改自vapev4", Center = true, AutoShow = true })
 
 local Tabs = {
-    Main = Window:AddTab("Main", "user"),
-    Misc = Window:AddTab("Misc", "options"),
-    ["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+    Main = Window:AddTab("主页", "user"),
+    Misc = Window:AddTab("杂项", "options"),
+    ["UI Settings"] = Window:AddTab("UI设置", "settings"),
 }
 
-local MainGroupBox = Tabs.Main:AddLeftGroupbox("Main Settings", "boxes")
-MainGroupBox:AddToggle("EnabledToggle", { Text = "Enabled", Default = SilentAimSettings.Enabled }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
+local MainGroupBox = Tabs.Main:AddLeftGroupbox("主设置", "boxes")
+MainGroupBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSettings.Enabled }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
 Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
-MainGroupBox:AddToggle("TeamCheckToggle", { Text = "Team Check", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
-MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "Visible Check", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
-MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "Target Mode", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
-MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "Target Part" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
-MainGroupBox:AddDropdown("MethodDropdown", { Text = "Silent Aim Method", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
-MainGroupBox:AddSlider('HitChanceSlider', { Text = 'Hit chance', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
-MainGroupBox:AddSlider('MaxDistanceSlider', { Text = 'Max Distance', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
+MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
+MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标模式", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
+MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
+MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
+MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
+MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
-local VisualsGroupBox = Tabs.Main:AddRightGroupbox("Visuals")
-VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "Show FOV Circle", Default = SilentAimSettings.FOVVisible }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV Circle Color" })
+local VisualsGroupBox = Tabs.Main:AddRightGroupbox("视觉效果")
+VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "显示FOV圈", Default = SilentAimSettings.FOVVisible }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV圈颜色" })
 Toggles.FOVVisibleToggle:OnChanged(function(Value) FOVCircleGui.Enabled = Value; SilentAimSettings.FOVVisible = Value end)
 Options.FOVColorPicker:OnChanged(function(Value) FOVStroke.Color = Value end)
-VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV Circle Radius", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 }):OnChanged(function(Value) FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2); SilentAimSettings.FOVRadius = Value end)
-VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "Fixed FOV (for Mobile)", Default = SilentAimSettings.FixedFOV }):OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
-VisualsGroupBox:AddToggle("ShowTargetToggle", { Text = "Show Target Indicator", Default = SilentAimSettings.ShowSilentAimTarget }):AddColorPicker("TargetIndicatorColorPicker", { Default = Color3.fromRGB(255,0,0), Title = "Target Indicator Color" })
+VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV圈半径", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 }):OnChanged(function(Value) FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2); SilentAimSettings.FOVRadius = Value end)
+VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "固定FOV (移动端)", Default = SilentAimSettings.FixedFOV }):OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
+VisualsGroupBox:AddToggle("ShowTargetToggle", { Text = "显示目标", Default = SilentAimSettings.ShowSilentAimTarget }):AddColorPicker("TargetIndicatorColorPicker", { Default = Color3.fromRGB(255,0,0), Title = "指示器颜色" })
 Toggles.ShowTargetToggle:OnChanged(function(Value) SilentAimSettings.ShowSilentAimTarget = Value end)
 Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator_circle.Color = Value; for _, line in ipairs(target_indicator_lines) do line.Color = Value end end)
-VisualsGroupBox:AddDropdown("IndicatorStyleDropdown", { Text = "Indicator Style", Values = {"Circle", "Triangle", "Pentagram"}, Default = "Circle" })
-VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "Indicator Size", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
-VisualsGroupBox:AddToggle("IndicatorRotationToggle", { Text = "Enable Indicator Rotation", Default = SilentAimSettings.IndicatorRotationEnabled })
+VisualsGroupBox:AddDropdown("IndicatorStyleDropdown", { Text = "指示器样式", Values = {"Circle", "Triangle", "Pentagram"}, Default = "Circle" })
+VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "指示器大小", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
+VisualsGroupBox:AddToggle("IndicatorRotationToggle", { Text = "指示器旋转", Default = SilentAimSettings.IndicatorRotationEnabled })
 Toggles.IndicatorRotationToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRotationEnabled = Value end)
-VisualsGroupBox:AddSlider("IndicatorRotationSpeedSlider", { Text = "Rotation Speed", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRotationSpeed, Rounding = 1, Compact = true })
+VisualsGroupBox:AddSlider("IndicatorRotationSpeedSlider", { Text = "旋转速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRotationSpeed, Rounding = 1, Compact = true })
 Options.IndicatorRotationSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRotationSpeed = Value end)
-VisualsGroupBox:AddToggle("IndicatorRainbowToggle", { Text = "Enable Rainbow Color", Default = SilentAimSettings.IndicatorRainbowEnabled })
+VisualsGroupBox:AddToggle("IndicatorRainbowToggle", { Text = "启用彩虹色", Default = SilentAimSettings.IndicatorRainbowEnabled })
 Toggles.IndicatorRainbowToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowEnabled = Value end)
-VisualsGroupBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "Color Speed", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRainbowSpeed, Rounding = 1, Compact = true })
+VisualsGroupBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "颜色变换速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRainbowSpeed, Rounding = 1, Compact = true })
 Options.IndicatorRainbowSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowSpeed = Value end)
-VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "Show Target Tracer", Default = SilentAimSettings.ShowTracer }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "Tracer Color" })
+VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "显示目标追踪线", Default = SilentAimSettings.ShowTracer }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "追踪线颜色" })
 Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
 Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
-VisualsGroupBox:AddSlider('TracerYOffsetSlider', { Text = 'Tracer Y-Axis Offset', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
+VisualsGroupBox:AddSlider('TracerYOffsetSlider', { Text = '追踪线Y轴偏移', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
 
-local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("Prediction")
-PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target Prediction", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
-PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "Prediction Amount", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
+local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("预判")
+PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
+PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
-local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("Misc Settings")
-MiscGroupBox:AddToggle("OptimizeToggle", { Text = "优先选择最近目标", Default = SilentAimSettings.OptimizeForDistance, Tooltip = "当FOV内有多个目标时, 优先瞄准物理距离最近的目标" })
+local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
+MiscGroupBox:AddToggle("OptimizeToggle", { Text = "优先选择最近目标", Default = SilentAimSettings.OptimizeForDistance })
 Toggles.OptimizeToggle:OnChanged(function(Value) SilentAimSettings.OptimizeForDistance = Value end)
 MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
-MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName, Tooltip = "显示目标的名称" })
+MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName })
 Toggles.ShowTargetNameToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
-MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth, Tooltip = "显示目标的当前血量" })
+MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth })
 Toggles.ShowTargetHealthToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
-MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance, Tooltip = "显示与目标的物理距离" })
+MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance })
 Toggles.ShowTargetDistanceToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
-
 
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
 FOVStroke.Color = Options.FOVColorPicker.Value
@@ -384,6 +383,13 @@ resume(create(function()
             end
         end
 
+        if currentTargetPart then
+            local humanoid = currentTargetPart.Parent and currentTargetPart.Parent:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then
+                currentTargetPart = nil 
+            end
+        end
+
         hideAllVisuals()
         
         if isEnabled and currentTargetPart then
@@ -420,8 +426,8 @@ resume(create(function()
                 local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value
                 if showAnyInfo then
                     local targetCharacter = currentTargetPart.Parent
-                    local humanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-                    local player = targetCharacter and Players:GetPlayerFromCharacter(targetCharacter)
+                    local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+                    local player = Players:GetPlayerFromCharacter(targetCharacter)
                     local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     
                     if humanoid and localRoot then
