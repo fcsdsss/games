@@ -30,7 +30,7 @@ local SilentAimSettings = {
     MaxDistance = 500,
     Tracer_Y_Offset = 0,
     WhitelistEnabled = false,
-    TargetNPCs = false
+    TargetMode = "玩家"
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -144,41 +144,39 @@ end
 
 local function getClosestPlayer()
     local Closest = nil
-    local DistanceToAimPoint = SilentAimSettings.FOVRadius
+    local MinFovDistance = SilentAimSettings.FOVRadius
     local AimPoint
     local LocalPlayerCharacter = LocalPlayer.Character
-    if not LocalPlayerCharacter then return nil end
+    if not LocalPlayerCharacter then return nil, math.huge end
     local localRoot = FindFirstChild(LocalPlayerCharacter, "HumanoidRootPart")
-    if not localRoot then return nil end
+    if not localRoot then return nil, math.huge end
     if SilentAimSettings.FixedFOV then AimPoint = Camera.ViewportSize / 2 else AimPoint = GetMouseLocation(UserInputService) end
 
-    local whitelistedPlayers = nil
-    if SilentAimSettings.WhitelistEnabled and Options and Options.WhitelistDropdown then
-        whitelistedPlayers = Options.WhitelistDropdown.Value
-    end
-
     for _, Player in ipairs(GetPlayers(Players)) do
-        if Player ~= LocalPlayer then
-            local isTeamSafe = not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team)
-            local isWhitelisted = not SilentAimSettings.WhitelistEnabled or (whitelistedPlayers and whitelistedPlayers[Player.Name])
+        if Player == LocalPlayer then continue end
+        if SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team then continue end
 
-            if isTeamSafe and isWhitelisted then
-                local Character = Player.Character
-                if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
-                    if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
-                        if (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
-                            local TargetPartName = SilentAimSettings.TargetPart
-                            local PartToAim = FindFirstChild(Character, TargetPartName)
-                            if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                            if PartToAim then
-                                local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
-                                if OnScreen then
-                                    local FovDistance = (AimPoint - ScreenPosition).Magnitude
-                                    if FovDistance <= DistanceToAimPoint then
-                                        Closest = PartToAim
-                                        DistanceToAimPoint = FovDistance
-                                    end
-                                end
+        if SilentAimSettings.WhitelistEnabled then
+            local whitelistedPlayers = Options.WhitelistDropdown.Value
+            if not (whitelistedPlayers and whitelistedPlayers[Player.Name]) then
+                continue
+            end
+        end
+
+        local Character = Player.Character
+        if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
+            if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
+                if (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude <= SilentAimSettings.MaxDistance then
+                    local TargetPartName = SilentAimSettings.TargetPart
+                    local PartToAim = FindFirstChild(Character, TargetPartName)
+                    if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
+                    if PartToAim then
+                        local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
+                        if OnScreen then
+                            local FovDistance = (AimPoint - ScreenPosition).Magnitude
+                            if FovDistance < MinFovDistance then
+                                Closest = PartToAim
+                                MinFovDistance = FovDistance
                             end
                         end
                     end
@@ -186,17 +184,17 @@ local function getClosestPlayer()
             end
         end
     end
-    return Closest
+    return Closest, MinFovDistance
 end
 
 local function getNPCTarget()
     local Closest = nil
-    local DistanceToAimPoint = SilentAimSettings.FOVRadius
+    local MinFovDistance = SilentAimSettings.FOVRadius
     local AimPoint
     local LocalPlayerCharacter = LocalPlayer.Character
-    if not LocalPlayerCharacter then return nil end
+    if not LocalPlayerCharacter then return nil, math.huge end
     local localRoot = FindFirstChild(LocalPlayerCharacter, "HumanoidRootPart")
-    if not localRoot then return nil end
+    if not localRoot then return nil, math.huge end
     if SilentAimSettings.FixedFOV then AimPoint = Camera.ViewportSize / 2 else AimPoint = GetMouseLocation(UserInputService) end
 
     for _, NPCModel in ipairs(npcList) do
@@ -210,14 +208,18 @@ local function getNPCTarget()
                     local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
                     if OnScreen then
                         local FovDistance = (AimPoint - ScreenPosition).Magnitude
-                        if FovDistance <= DistanceToAimPoint then Closest = PartToAim; DistanceToAimPoint = FovDistance end
+                        if FovDistance < MinFovDistance then
+                            Closest = PartToAim
+                            MinFovDistance = FovDistance
+                        end
                     end
                 end
             end
         end
     end
-    return Closest
+    return Closest, MinFovDistance
 end
+
 
 function getPolygonPoints(center, radius, sides)
     local points = {}
@@ -255,8 +257,7 @@ MainGroupBox:AddToggle("EnabledToggle", { Text = "Enabled", Default = SilentAimS
 Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
 MainGroupBox:AddToggle("TeamCheckToggle", { Text = "Team Check", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
 MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "Visible Check", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
-MainGroupBox:AddToggle("TargetNPCToggle", {Text = "Target NPCs", Default = SilentAimSettings.TargetNPCs, Tooltip = "Prioritize targeting NPCs over players"})
-Toggles.TargetNPCToggle:OnChanged(function(Value) SilentAimSettings.TargetNPCs = Value end)
+MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "Target Mode", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "Target Part" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
 MainGroupBox:AddDropdown("MethodDropdown", { Text = "Silent Aim Method", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
 MainGroupBox:AddSlider('HitChanceSlider', { Text = 'Hit chance', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
@@ -301,7 +302,7 @@ FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Option
 
 task.spawn(function()
     while task.wait(2) do
-        if Toggles.TargetNPCToggle and Toggles.TargetNPCToggle.Value then
+        if SilentAimSettings.TargetMode == "NPC" or SilentAimSettings.TargetMode == "所有" then
             updateNPCs()
         end
     end
@@ -313,14 +314,26 @@ resume(create(function()
         if SilentAimSettings.IndicatorRainbowEnabled then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
         
         local isEnabled = Toggles.EnabledToggle.Value
+        currentTargetPart = nil
+
         if isEnabled then
-            if SilentAimSettings.TargetNPCs then
-                currentTargetPart = getNPCTarget()
-            else
-                currentTargetPart = getClosestPlayer()
+            local targetMode = SilentAimSettings.TargetMode
+            local playerTarget, playerFovDist = nil, math.huge
+            local npcTarget, npcFovDist = nil, math.huge
+
+            if targetMode == "玩家" or targetMode == "所有" then
+                playerTarget, playerFovDist = getClosestPlayer()
             end
-        else
-            currentTargetPart = nil
+
+            if targetMode == "NPC" or targetMode == "所有" then
+                npcTarget, npcFovDist = getNPCTarget()
+            end
+
+            if playerFovDist < npcFovDist then
+                currentTargetPart = playerTarget
+            else
+                currentTargetPart = npcTarget
+            end
         end
 
         if Toggles.ShowTargetToggle.Value and isEnabled and currentTargetPart then
