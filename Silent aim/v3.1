@@ -193,7 +193,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.1 - 手动锁定版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.2 - 手动锁定最终版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -206,6 +206,7 @@ MainGroupBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSe
 Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
 MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
 MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
 MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
 MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
@@ -250,7 +251,7 @@ Toggles.ShowTargetHealthToggle:OnChanged(function(Value) SilentAimSettings.ShowT
 MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance })
 Toggles.ShowTargetDistanceToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
 
-local ManualLockGroupBox = Tabs.Misc:AddLeftGroupbox("手动锁定")
+local ManualLockGroupBox = Tabs.Misc:AddLeftGroupbox("锁定")
 ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", {
     Text = "选择锁定目标",
     Default = "无",
@@ -265,24 +266,35 @@ end)
 ManualLockGroupBox:AddButton("刷新列表", function()
     targetMap = {}
     local targetNames = {"无"}
+    local targetMode = SilentAimSettings.TargetMode
     
-    updateNPCs() 
+    if targetMode == "NPC" or targetMode == "所有" then
+        updateNPCs() 
+    end
     
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            if not (SilentAimSettings.TeamCheck and player.Team == LocalPlayer.Team) then
-                table.insert(targetNames, player.Name)
-                targetMap[player.Name] = player.Character
+    if targetMode == "玩家" or targetMode == "所有" then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                if not (SilentAimSettings.TeamCheck and player.Team == LocalPlayer.Team) then
+                    table.insert(targetNames, player.Name)
+                    targetMap[player.Name] = player.Character
+                end
             end
         end
     end
-    for _, npc in ipairs(npcList) do
-        if npc and npc.Name and npc.PrimaryPart then
-            table.insert(targetNames, npc.Name)
-            targetMap[npc.Name] = npc
+    
+    if targetMode == "NPC" or targetMode == "所有" then
+        for _, npc in ipairs(npcList) do
+            if npc and npc.Name and npc.PrimaryPart then
+                table.insert(targetNames, npc.Name)
+                targetMap[npc.Name] = npc
+            end
         end
     end
+
     Options.TargetSelectorDropdown:SetValues(targetNames)
+    Options.TargetSelectorDropdown:SetValue("无")
+    lockedTargetCharacter = nil
 end)
 
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
