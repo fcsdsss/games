@@ -29,7 +29,7 @@ local SilentAimSettings = {
     IndicatorRainbowSpeed = 1,
     MaxDistance = 500,
     Tracer_Y_Offset = 0,
-    OptimizeForDistance = false,
+    PriorityMode = "准星最近",
     TargetInfoStyle = "面板",
     ShowTargetName = false,
     ShowTargetHealth = false,
@@ -38,7 +38,7 @@ local SilentAimSettings = {
     ShowDamageNotifier = false,
     IndependentPanelPosition = "200,200",
     IndependentPanelPinned = false,
-    SimulateGunLine = false
+    LeakAndHitMode = false
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -64,6 +64,7 @@ local resume = coroutine.resume
 local create = coroutine.create
 
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
+local bodyPartPriority = {"Head", "UpperTorso", "HumanoidRootPart", "LowerTorso"}
 local PredictionAmount = 0.165
 
 local currentTargetPart = nil
@@ -72,8 +73,6 @@ local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
 local lockedTargetCharacter = nil
-
-local gunBeam, beamPart, beamAttachment0, beamAttachment1
 
 local target_indicator_circle = Drawing.new("Circle")
 target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
@@ -177,24 +176,22 @@ local function updateNPCs()
     end
 end
 
-local function IsObjectVisible(model)
-    if not model then return false end
+local function isPartVisible(part)
+    if not part then return false end
     local localCharacter = LocalPlayer.Character
     if not localCharacter then return false end
-    local targetPart = model:FindFirstChild(SilentAimSettings.TargetPart) or model:FindFirstChild("HumanoidRootPart")
-    if not targetPart then return false end
     local cameraPosition = Camera.CFrame.Position
-    local direction = targetPart.Position - cameraPosition
+    local direction = part.Position - cameraPosition
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {localCharacter}
-    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 5), raycastParams)
-    return not raycastResult or raycastResult.Instance:IsDescendantOf(model)
+    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 0.1), raycastParams)
+    return not raycastResult or raycastResult.Instance:IsDescendantOf(part.Parent)
 end
 
 local function getClosestPlayer()
     local LocalPlayerCharacter = LocalPlayer.Character
-    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then return nil, math.huge end
+    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then return nil end
     local localRoot = LocalPlayerCharacter.HumanoidRootPart
     
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
@@ -203,8 +200,9 @@ local function getClosestPlayer()
     for _, Player in ipairs(GetPlayers(Players)) do
         if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
             local Character = Player.Character
-            if Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildOfClass("Humanoid") and Character.Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
+            local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+            if Character and Character:FindFirstChild("HumanoidRootPart") and Humanoid and Humanoid.Health > 0 then
+                if not (SilentAimSettings.VisibleCheck and not isPartVisible(Character.HumanoidRootPart)) then
                     local physicalDist = (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local TargetPartName = SilentAimSettings.TargetPart
@@ -215,7 +213,7 @@ local function getClosestPlayer()
                             if OnScreen then
                                 local fovDist = (AimPoint - ScreenPosition).Magnitude
                                 if fovDist <= SilentAimSettings.FOVRadius then
-                                    table.insert(candidates, {part = PartToAim, fov = fovDist, dist = physicalDist})
+                                    table.insert(candidates, {character = Character, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                                 end
                             end
                         end
@@ -225,22 +223,31 @@ local function getClosestPlayer()
         end
     end
 
-    if #candidates == 0 then return nil, math.huge end
-    table.sort(candidates, function(a, b) return SilentAimSettings.OptimizeForDistance and a.dist < b.dist or a.fov < b.fov end)
-    return candidates[1].part, candidates[1].fov
+    if #candidates == 0 then return nil end
+    table.sort(candidates, function(a, b)
+        if SilentAimSettings.PriorityMode == "最低血量" then
+            return a.health < b.health
+        elseif SilentAimSettings.PriorityMode == "距离最近" then
+            return a.dist < b.dist
+        else
+            return a.fov < b.fov
+        end
+    end)
+    return candidates[1].character
 end
 
 local function getNPCTarget()
     local LocalPlayerCharacter = LocalPlayer.Character
-    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then return nil, math.huge end
+    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then return nil end
     local localRoot = LocalPlayerCharacter.HumanoidRootPart
 
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
     local candidates = {}
 
     for _, NPCModel in ipairs(npcList) do
-        if NPCModel and NPCModel.PrimaryPart then
-            if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(NPCModel)) then
+        local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
+        if NPCModel and NPCModel.PrimaryPart and Humanoid and Humanoid.Health > 0 then
+            if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart)) then
                 local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
                 if physicalDist <= SilentAimSettings.MaxDistance then
                     local TargetPartName = SilentAimSettings.TargetPart
@@ -251,7 +258,7 @@ local function getNPCTarget()
                         if OnScreen then
                             local fovDist = (AimPoint - ScreenPosition).Magnitude
                             if fovDist <= SilentAimSettings.FOVRadius then
-                                table.insert(candidates, {part = PartToAim, fov = fovDist, dist = physicalDist})
+                                table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                             end
                         end
                     end
@@ -260,9 +267,17 @@ local function getNPCTarget()
         end
     end
 
-    if #candidates == 0 then return nil, math.huge end
-    table.sort(candidates, function(a, b) return SilentAimSettings.OptimizeForDistance and a.dist < b.dist or a.fov < b.fov end)
-    return candidates[1].part, candidates[1].fov
+    if #candidates == 0 then return nil end
+    table.sort(candidates, function(a, b)
+        if SilentAimSettings.PriorityMode == "最低血量" then
+            return a.health < b.health
+        elseif SilentAimSettings.PriorityMode == "距离最近" then
+            return a.dist < b.dist
+        else
+            return a.fov < b.fov
+        end
+    end)
+    return candidates[1].character
 end
 
 function getPolygonPoints(center, radius, sides)
@@ -292,7 +307,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.1", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v4.0 - 智能优先版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -305,6 +320,7 @@ MainGroupBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSe
 Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
 MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
 MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainGroupBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value) SilentAimSettings.LeakAndHitMode = Value end)
 MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
 MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
@@ -334,13 +350,13 @@ VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "显示目标追踪线", 
 Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
 Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
 VisualsGroupBox:AddSlider('TracerYOffsetSlider', { Text = '追踪线Y轴偏移', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
-VisualsGroupBox:AddToggle("GunLineToggle", {Text = "模拟枪线", Default = SilentAimSettings.SimulateGunLine}):OnChanged(function(value) SilentAimSettings.SimulateGunLine = value end)
 
 local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("预判")
 PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
 local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
+MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
 MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
 MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName })
 Toggles.ShowTargetNameToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
@@ -410,19 +426,6 @@ FOVStroke.Color = Options.FOVColorPicker.Value
 FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
 IndependentPanelFrame.Draggable = not SilentAimSettings.IndependentPanelPinned
 
-local function setupGunBeam()
-    beamPart = Instance.new("Part")
-    beamPart.Name = "BeamStartPart"; beamPart.Anchored = true; beamPart.CanCollide = false; beamPart.Transparency = 1; beamPart.Parent = Camera
-    beamAttachment0 = Instance.new("Attachment", beamPart)
-    beamAttachment1 = Instance.new("Attachment")
-    gunBeam = Instance.new("Beam", beamPart)
-    gunBeam.Attachment0 = beamAttachment0; gunBeam.Attachment1 = beamAttachment1
-    gunBeam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
-    gunBeam.LightEmission = 1; gunBeam.LightInfluence = 0; gunBeam.Width0 = 0.1; gunBeam.Width1 = 0.1
-    gunBeam.Enabled = false
-end
-setupGunBeam()
-
 task.spawn(function()
     while task.wait(2) do
         if SilentAimSettings.TargetMode == "NPC" or SilentAimSettings.TargetMode == "所有" then
@@ -445,46 +448,51 @@ resume(create(function()
         
         local isEnabled = Toggles.EnabledToggle.Value
         currentTargetPart = nil
+        local currentTargetCharacter = nil
 
         if isEnabled then
             if lockedTargetCharacter then
-                local humanoid = lockedTargetCharacter:FindFirstChildOfClass("Humanoid")
-                local rootPart = lockedTargetCharacter.PrimaryPart or lockedTargetCharacter:FindFirstChild("HumanoidRootPart")
-                if humanoid and humanoid.Health > 0 and rootPart and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then
-                    local dist = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
-                    if dist <= SilentAimSettings.MaxDistance then
-                        currentTargetPart = lockedTargetCharacter:FindFirstChild(SilentAimSettings.TargetPart) or rootPart
-                    else
-                        lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
-                    end
-                else
-                    lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
-                end
+                currentTargetCharacter = lockedTargetCharacter
             else
                 local targetMode = SilentAimSettings.TargetMode
-                local playerTarget, playerFovDist = nil, math.huge
-                local npcTarget, npcFovDist = nil, math.huge
-                if targetMode == "玩家" or targetMode == "所有" then playerTarget, playerFovDist = getClosestPlayer() end
-                if targetMode == "NPC" or targetMode == "所有" then npcTarget, npcFovDist = getNPCTarget() end
-                if playerFovDist < npcFovDist then currentTargetPart = playerTarget else currentTargetPart = npcTarget end
+                local playerTarget, npcTarget
+                if targetMode == "玩家" or targetMode == "所有" then playerTarget = getClosestPlayer() end
+                if targetMode == "NPC" or targetMode == "所有" then npcTarget = getNPCTarget() end
+
+                if playerTarget and npcTarget then
+                    local pDist = (LocalPlayer.Character.HumanoidRootPart.Position - playerTarget.HumanoidRootPart.Position).Magnitude
+                    local nDist = (LocalPlayer.Character.HumanoidRootPart.Position - npcTarget.HumanoidRootPart.Position).Magnitude
+                    currentTargetCharacter = pDist < nDist and playerTarget or npcTarget
+                else
+                    currentTargetCharacter = playerTarget or npcTarget
+                end
             end
         end
 
-        if currentTargetPart then
-            local humanoid = currentTargetPart.Parent and currentTargetPart.Parent:FindFirstChildOfClass("Humanoid")
+        if currentTargetCharacter then
+            local humanoid = currentTargetCharacter:FindFirstChildOfClass("Humanoid")
             if not humanoid or humanoid.Health <= 0 then
-                lastHealthValues[humanoid] = nil
-                if lockedTargetCharacter and lockedTargetCharacter == currentTargetPart.Parent then
+                if lockedTargetCharacter and lockedTargetCharacter == currentTargetCharacter then
                     lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
-                currentTargetPart = nil
-            end
-        end
-
-        if isEnabled and currentTargetPart and SilentAimSettings.SimulateGunLine then
-            beamPart.CFrame = Camera.CFrame
-            if beamAttachment1.Parent ~= currentTargetPart then
-                beamAttachment1.Parent = currentTargetPart
+                currentTargetCharacter = nil
+            else
+                if SilentAimSettings.LeakAndHitMode then
+                    for _, partName in ipairs(bodyPartPriority) do
+                        local part = currentTargetCharacter:FindFirstChild(partName)
+                        if part and isPartVisible(part) then
+                            currentTargetPart = part
+                            break
+                        end
+                    end
+                else
+                    local targetPartName = SilentAimSettings.TargetPart
+                    if targetPartName == "Random" then
+                        currentTargetPart = currentTargetCharacter[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+                    else
+                        currentTargetPart = currentTargetCharacter:FindFirstChild(targetPartName) or currentTargetCharacter:FindFirstChild("HumanoidRootPart")
+                    end
+                end
             end
         end
 
@@ -527,7 +535,7 @@ resume(create(function()
             if IsOnScreen and Toggles.ShowTargetToggle.Value then
                 local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
                 local indicatorStyle = Options.IndicatorStyleDropdown.Value
-                local finalIndicatorColor; local isTargetVisible = IsObjectVisible(currentTargetPart.Parent)
+                local finalIndicatorColor; local isTargetVisible = isPartVisible(currentTargetPart)
                 if isTargetVisible then finalIndicatorColor = Color3.fromRGB(0, 255, 0); indicatorRadius = indicatorRadius * 0.6
                 elseif SilentAimSettings.IndicatorRainbowEnabled then finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
                 else finalIndicatorColor = Options.TargetIndicatorColorPicker.Value end
@@ -604,20 +612,6 @@ resume(create(function()
     end)
 end))
 
-UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-    if gameProcessedEvent then return end
-    if not SilentAimSettings.Enabled or not SilentAimSettings.SimulateGunLine or not currentTargetPart then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        gunBeam.Enabled = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        if gunBeam then gunBeam.Enabled = false end
-    end
-end)
-
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
@@ -672,7 +666,6 @@ end))
 Library:OnUnload(function()
     FOVCircleGui:Destroy()
     if IndependentPanelGui then IndependentPanelGui:Destroy() end
-    if beamPart then beamPart:Destroy() end
     hideAllVisuals()
 end)
 
