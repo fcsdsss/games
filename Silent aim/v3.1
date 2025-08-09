@@ -37,7 +37,8 @@ local SilentAimSettings = {
     TargetMode = "玩家",
     ShowDamageNotifier = false,
     IndependentPanelPosition = "200,200",
-    IndependentPanelPinned = false
+    IndependentPanelPinned = false,
+    SimulateGunLine = false
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -71,6 +72,8 @@ local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
 local lockedTargetCharacter = nil
+
+local gunBeam, beamPart, beamAttachment0, beamAttachment1
 
 local target_indicator_circle = Drawing.new("Circle")
 target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
@@ -289,7 +292,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.8 - 最终修复版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.9 - 枪线最终版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -331,6 +334,7 @@ VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "显示目标追踪线", 
 Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
 Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
 VisualsGroupBox:AddSlider('TracerYOffsetSlider', { Text = '追踪线Y轴偏移', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
+VisualsGroupBox:AddToggle("GunLineToggle", {Text = "模拟枪线", Default = SilentAimSettings.SimulateGunLine}):OnChanged(function(value) SilentAimSettings.SimulateGunLine = value end)
 
 local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("预判")
 PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
@@ -406,6 +410,19 @@ FOVStroke.Color = Options.FOVColorPicker.Value
 FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
 IndependentPanelFrame.Draggable = not SilentAimSettings.IndependentPanelPinned
 
+local function setupGunBeam()
+    beamPart = Instance.new("Part")
+    beamPart.Name = "BeamStartPart"; beamPart.Anchored = true; beamPart.CanCollide = false; beamPart.Transparency = 1; beamPart.Parent = Camera
+    beamAttachment0 = Instance.new("Attachment", beamPart)
+    beamAttachment1 = Instance.new("Attachment")
+    gunBeam = Instance.new("Beam", beamPart)
+    gunBeam.Attachment0 = beamAttachment0; gunBeam.Attachment1 = beamAttachment1
+    gunBeam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+    gunBeam.LightEmission = 1; gunBeam.LightInfluence = 0; gunBeam.Width0 = 0.1; gunBeam.Width1 = 0.1
+    gunBeam.Enabled = false
+end
+setupGunBeam()
+
 task.spawn(function()
     while task.wait(2) do
         if SilentAimSettings.TargetMode == "NPC" or SilentAimSettings.TargetMode == "所有" then
@@ -461,6 +478,13 @@ resume(create(function()
                     lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
                 currentTargetPart = nil
+            end
+        end
+
+        if isEnabled and currentTargetPart and SilentAimSettings.SimulateGunLine then
+            beamPart.CFrame = Camera.CFrame
+            if beamAttachment1.Parent ~= currentTargetPart then
+                beamAttachment1.Parent = currentTargetPart
             end
         end
 
@@ -580,6 +604,20 @@ resume(create(function()
     end)
 end))
 
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+    if not SilentAimSettings.Enabled or not SilentAimSettings.SimulateGunLine or not currentTargetPart then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        gunBeam.Enabled = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if gunBeam then gunBeam.Enabled = false end
+    end
+end)
+
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
@@ -634,6 +672,7 @@ end))
 Library:OnUnload(function()
     FOVCircleGui:Destroy()
     if IndependentPanelGui then IndependentPanelGui:Destroy() end
+    if beamPart then beamPart:Destroy() end
     hideAllVisuals()
 end)
 
