@@ -12,7 +12,7 @@ local SilentAimSettings = {
     ToggleKey = "RightAlt",
     TeamCheck = false,
     VisibleCheck = false,
-    VisiblePartOverride = false, -- 新增：漏打模式开关
+    VisiblePartOverride = false,
     TargetPart = "HumanoidRootPart",
     SilentAimMethod = "Raycast",
     FOVRadius = 130,
@@ -32,7 +32,7 @@ local SilentAimSettings = {
     Tracer_Y_Offset = 0,
     OptimizeForDistance = false,
     TargetInfoStyle = "面板",
-    LockPanelPosition = true, -- 新增：锁定面板开关
+    LockPanelPosition = true,
     ShowTargetName = false,
     ShowTargetHealth = false,
     ShowTargetDistance = false,
@@ -96,20 +96,25 @@ FOVStroke.Name = "FOVStroke"; FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.B
 local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
 FOVCorner.Name = "FOVCorner"; FOVCorner.CornerRadius = UDim.new(1, 0)
 
+-- 独立面板样式更新
 local DraggableInfoPanel = Instance.new("Frame", FOVCircleGui)
-DraggableInfoPanel.Name = "DraggableInfoPanel"; DraggableInfoPanel.Size = UDim2.fromOffset(150, 80); DraggableInfoPanel.Position = UDim2.fromOffset(10, 100); DraggableInfoPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 30); DraggableInfoPanel.BorderSizePixel = 0; DraggableInfoPanel.Visible = false; DraggableInfoPanel.ClipsDescendants = true; DraggableInfoPanel.Active = true
-DraggableInfoPanel.Draggable = not SilentAimSettings.LockPanelPosition -- Logic moved to toggle
-local DraggableCorner = Instance.new("UICorner", DraggableInfoPanel); DraggableCorner.CornerRadius = UDim.new(0, 5)
-local DraggableStroke = Instance.new("UIStroke", DraggableInfoPanel); DraggableStroke.Color = Color3.fromRGB(80, 80, 80)
-local DraggableLayout = Instance.new("UIListLayout", DraggableInfoPanel); DraggableLayout.Padding = UDim.new(0, 5); DraggableLayout.SortOrder = Enum.SortOrder.LayoutOrder; DraggableLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left; DraggableLayout.VerticalAlignment = Enum.VerticalAlignment.Top; DraggableLayout.Padding = UDim.new(0, 5)
-local DraggableInfoTitle = Instance.new("TextLabel", DraggableInfoPanel)
-DraggableInfoTitle.Name = "Title"; DraggableInfoTitle.Size = UDim2.new(1, 0, 0, 20); DraggableInfoTitle.Text = "目标信息"; DraggableInfoTitle.TextColor3 = Color3.fromRGB(255, 255, 255); DraggableInfoTitle.BackgroundColor3 = Color3.fromRGB(45, 45, 45); DraggableInfoTitle.LayoutOrder = 1
-local DraggableInfoName = Instance.new("TextLabel", DraggableInfoPanel)
-DraggableInfoName.Name = "Name"; DraggableInfoName.Size = UDim2.new(1, -10, 0, 15); DraggableInfoName.Text = "名字: -"; DraggableInfoName.TextColor3 = Color3.fromRGB(255, 255, 255); DraggableInfoName.TextXAlignment = Enum.TextXAlignment.Left; DraggableInfoName.BackgroundTransparency = 1; DraggableInfoName.LayoutOrder = 2
-local DraggableInfoHealth = Instance.new("TextLabel", DraggableInfoPanel)
-DraggableInfoHealth.Name = "Health"; DraggableInfoHealth.Size = UDim2.new(1, -10, 0, 15); DraggableInfoHealth.Text = "血量: -"; DraggableInfoHealth.TextColor3 = Color3.fromRGB(255, 255, 255); DraggableInfoHealth.TextXAlignment = Enum.TextXAlignment.Left; DraggableInfoHealth.BackgroundTransparency = 1; DraggableInfoHealth.LayoutOrder = 3
-local DraggableInfoDistance = Instance.new("TextLabel", DraggableInfoPanel)
-DraggableInfoDistance.Name = "Distance"; DraggableInfoDistance.Size = UDim2.new(1, -10, 0, 15); DraggableInfoDistance.Text = "距离: -"; DraggableInfoDistance.TextColor3 = Color3.fromRGB(255, 255, 255); DraggableInfoDistance.TextXAlignment = Enum.TextXAlignment.Left; DraggableInfoDistance.BackgroundTransparency = 1; DraggableInfoDistance.LayoutOrder = 4
+DraggableInfoPanel.Name = "DraggableInfoPanel"; DraggableInfoPanel.Position = UDim2.fromOffset(10, 100); DraggableInfoPanel.BackgroundColor3 = Color3.fromRGB(0, 0, 0); DraggableInfoPanel.BackgroundTransparency = 0.5; DraggableInfoPanel.BorderSizePixel = 0; DraggableInfoPanel.Visible = false; DraggableInfoPanel.Active = true
+DraggableInfoPanel.Size = UDim2.fromOffset(120, 0); DraggableInfoPanel.AutomaticSize = Enum.AutomaticSize.Y
+DraggableInfoPanel.Draggable = not SilentAimSettings.LockPanelPosition
+local DraggableLayout = Instance.new("UIListLayout", DraggableInfoPanel); DraggableLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local DraggablePadding = Instance.new("UIPadding", DraggableInfoPanel)
+DraggablePadding.PaddingTop = UDim.new(0, 5); DraggablePadding.PaddingBottom = UDim.new(0, 5); DraggablePadding.PaddingLeft = UDim.new(0, 5); DraggablePadding.PaddingRight = UDim.new(0, 5)
+
+local function CreatePanelTextLabel(name)
+    local label = Instance.new("TextLabel", DraggableInfoPanel)
+    label.Name = name; label.Size = UDim2.new(1, 0, 0, 14); label.Text = name .. ": -"; label.Font = Enum.Font.Plex; label.TextSize = 14; label.TextColor3 = Color3.fromRGB(255, 255, 255); label.TextXAlignment = Enum.TextXAlignment.Left; label.BackgroundTransparency = 1; label.Visible = false; label.LayoutOrder = 1
+    local stroke = Instance.new("UIStroke", label); stroke.Color = Color3.fromRGB(0, 0, 0); stroke.Thickness = 1
+    return label
+end
+
+local DraggableInfoName = CreatePanelTextLabel("Name")
+local DraggableInfoHealth = CreatePanelTextLabel("Health")
+local DraggableInfoDistance = CreatePanelTextLabel("Distance")
 
 local ExpectedArguments = { FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} }, FindPartOnRayWithWhitelist = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean"} }, FindPartOnRay = { ArgCountRequired = 2, Args = {"Instance", "Ray", "Instance", "boolean", "boolean"} }, Raycast = { ArgCountRequired = 3, Args = {"Instance", "Vector3", "Vector3", "RaycastParams"} } }
 function CalculateChance(Percentage) return math.random() <= math.floor(Percentage) / 100 end
@@ -176,7 +181,7 @@ local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options; local Toggles = Library.Toggles
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.3 (修复与改进)", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.4 (样式修复)", Center = true, AutoShow = true })
 local Tabs = { Main = Window:AddTab("主页", "user"), Misc = Window:AddTab("杂项", "boxes"), ["UI Settings"] = Window:AddTab("UI设置", "settings") }
 
 local MainGroupBox = Tabs.Main:AddLeftGroupbox("主设置", "boxes")
@@ -282,9 +287,9 @@ resume(create(function()
                         local targetName = player and player.Name or targetCharacter.Name; local health = math.floor(humanoid.Health); local dist = math.floor((localRoot.Position - currentTargetPart.Position).Magnitude); local infoStyle = SilentAimSettings.TargetInfoStyle
                         if infoStyle == "独立面板" then
                             DraggableInfoPanel.Visible = true
-                            if Toggles.ShowTargetNameToggle.Value then DraggableInfoName.Visible = true; DraggableInfoName.Text = "名字: " .. targetName else DraggableInfoName.Visible = false end
-                            if Toggles.ShowTargetHealthToggle.Value then DraggableInfoHealth.Visible = true; DraggableInfoHealth.Text = string.format("血量: %d (%.0f%%)", health, humanoid.Health/humanoid.MaxHealth*100) else DraggableInfoHealth.Visible = false end
-                            if Toggles.ShowTargetDistanceToggle.Value then DraggableInfoDistance.Visible = true; DraggableInfoDistance.Text = string.format("距离: %dm", dist) else DraggableInfoDistance.Visible = false end
+                            DraggableInfoName.Visible = Toggles.ShowTargetNameToggle.Value; if Toggles.ShowTargetNameToggle.Value then DraggableInfoName.Text = targetName end
+                            DraggableInfoHealth.Visible = Toggles.ShowTargetHealthToggle.Value; if Toggles.ShowTargetHealthToggle.Value then DraggableInfoHealth.Text = string.format("血量: %d", health) end
+                            DraggableInfoDistance.Visible = Toggles.ShowTargetDistanceToggle.Value; if Toggles.ShowTargetDistanceToggle.Value then DraggableInfoDistance.Text = string.format("距离: %dm", dist) end
                         elseif infoStyle == "面板" then
                             local linesDrawn = 0; local lineHeight = 15; local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
                             if Toggles.ShowTargetNameToggle.Value then local textObj = panel_info_texts.Name; textObj.Text = targetName; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
@@ -302,7 +307,9 @@ resume(create(function()
             end
         else
             if SilentAimSettings.TargetInfoStyle == "独立面板" then
-                 DraggableInfoName.Text = "名字: -"; DraggableInfoHealth.Text = "血量: -"; DraggableInfoDistance.Text = "距离: -"
+                 DraggableInfoName.Visible = Toggles.ShowTargetNameToggle.Value; DraggableInfoName.Text = "名字: -"
+                 DraggableInfoHealth.Visible = Toggles.ShowTargetHealthToggle.Value; DraggableInfoHealth.Text = "血量: -"
+                 DraggableInfoDistance.Visible = Toggles.ShowTargetDistanceToggle.Value; DraggableInfoDistance.Text = "距离: -"
             end
         end
 
@@ -316,7 +323,7 @@ resume(create(function()
     end)
 end))
 
-local oldNamecall; oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...) local Method = getnamecallmethod(); local Arguments = {...}; local self = Arguments[1]; if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) and currentTargetPart then local currentMethod = SilentAimSettings.SilentAimMethod; if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end elseif Method == "Raycast" and currentMethod == Method then if ValidateArguments(Arguments, ExpectedArguments.Raycast) then Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position); return oldNamecall(unpack(Arguments)) end elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then local origin = Camera.CFrame.Position; local direction = (currentTargetPart.Position - origin).Unit; return Ray.new(origin, direction) end end; return oldNamecall(...) end))
+local oldNamecall; oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...) local Method = getnamecallmethod(); local Arguments = {...}; local self = Arguments[1]; if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) and currentTargetPart then local currentMethod = SilentAimSettings.SilentAimMethod; if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_ry.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end elseif Method == "Raycast" and currentMethod == Method then if ValidateArguments(Arguments, ExpectedArguments.Raycast) then Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position); return oldNamecall(unpack(Arguments)) end elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then local origin = Camera.CFrame.Position; local direction = (currentTargetPart.Position - origin).Unit; return Ray.new(origin, direction) end end; return oldNamecall(...) end))
 local oldIndex; local oldRayNew; oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index) if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then if currentTargetPart then if Index == "Target" or Index == "target" then return currentTargetPart elseif Index == "Hit" or Index == "hit" then return (SilentAimSettings.MouseHitPrediction and (currentTargetPart.CFrame + (currentTargetPart.Velocity * currentTargetPart.Velocity.magnitude * SilentAimSettings.MouseHitPredictionAmount))) or currentTargetPart.CFrame elseif Index == "X" or Index == "x" then return self.X elseif Index == "Y" or Index == "y" then return self.Y elseif Index == "UnitRay" then return Ray.new(self.Origin, (self.Hit.p - self.Origin.p).Unit) end end end; return oldIndex(self, Index) end)); oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction) if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then local newDirectionVector = getDirection(origin, currentTargetPart.Position); return oldRayNew(origin, newDirectionVector) end; return oldRayNew(origin, direction) end))
 
 Library:OnUnload(function() FOVCircleGui:Destroy(); hideAllVisuals() end)
