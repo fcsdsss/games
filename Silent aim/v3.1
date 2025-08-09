@@ -36,7 +36,8 @@ local SilentAimSettings = {
     ShowTargetDistance = false,
     TargetMode = "玩家",
     ShowDamageNotifier = false,
-    IndependentPanelPosition = "200,200"
+    IndependentPanelPosition = "200,200",
+    IndependentPanelPinned = false
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -70,6 +71,8 @@ local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
 local lockedTargetCharacter = nil
+local autoTargetPart = nil
+local frameCounter = 0
 
 local target_indicator_circle = Drawing.new("Circle")
 target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
@@ -112,7 +115,7 @@ IndependentPanelGui.Name = "IndependentPanelGui"; IndependentPanelGui.ResetOnSpa
 local IndependentPanelFrame = Instance.new("Frame", IndependentPanelGui)
 IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 80); 
 IndependentPanelFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); IndependentPanelFrame.BackgroundTransparency = 0.3; IndependentPanelFrame.BorderSizePixel = 1; IndependentPanelFrame.BorderColor3 = Color3.new(1,1,1)
-IndependentPanelFrame.Visible = false; IndependentPanelFrame.Active = true; IndependentPanelFrame.Draggable = true
+IndependentPanelFrame.Visible = false; IndependentPanelFrame.Active = true
 local IPCorner = Instance.new("UICorner", IndependentPanelFrame); IPCorner.CornerRadius = UDim.new(0, 4)
 local IPListLayout = Instance.new("UIListLayout", IndependentPanelFrame)
 IPListLayout.Padding = UDim.new(0, 5); IPListLayout.SortOrder = Enum.SortOrder.LayoutOrder; IPListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; IPListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
@@ -124,8 +127,8 @@ for i, name in ipairs({"Name", "Health", "Distance"}) do
     label.Font = Enum.Font.SourceSans; label.TextSize = 14; label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left; label.LayoutOrder = i
     independent_panel_texts[name] = label
 end
-IndependentPanelFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then IndependentPanelFrame.Position = UDim2.fromOffset(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) end end)
-IndependentPanelFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset end end)
+IndependentPanelFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then IndependentPanelFrame.Position = UDim2.fromOffset(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) end end)
+IndependentPanelFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset end end)
 
 
 local ExpectedArguments = {
@@ -289,7 +292,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.5 - 混合锁定修复版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.6 - 性能优化版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -351,6 +354,10 @@ MiscGroupBox:AddButton("重置独立面板位置", function()
     local pos = SilentAimSettings.IndependentPanelPosition:split(",")
     IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
 end)
+MiscGroupBox:AddToggle("PinPanelToggle", {Text = "固定面板", Default = SilentAimSettings.IndependentPanelPinned}):OnChanged(function(value)
+    SilentAimSettings.IndependentPanelPinned = value
+    IndependentPanelFrame.Draggable = not value
+end)
 
 local ManualLockGroupBox = Tabs.Misc:AddLeftGroupbox("锁定")
 ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", {
@@ -400,6 +407,7 @@ end)
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
 FOVStroke.Color = Options.FOVColorPicker.Value
 FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
+IndependentPanelFrame.Draggable = not SilentAimSettings.IndependentPanelPinned
 
 task.spawn(function()
     while task.wait(2) do
@@ -418,6 +426,7 @@ IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos
 
 resume(create(function()
     RenderStepped:Connect(function()
+        frameCounter = frameCounter + 1
         if SilentAimSettings.IndicatorRotationEnabled then currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2) end
         if SilentAimSettings.IndicatorRainbowEnabled then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
         
@@ -438,13 +447,17 @@ resume(create(function()
                 else
                     lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
+                autoTargetPart = nil
             else
-                local targetMode = SilentAimSettings.TargetMode
-                local playerTarget, playerFovDist = nil, math.huge
-                local npcTarget, npcFovDist = nil, math.huge
-                if targetMode == "玩家" or targetMode == "所有" then playerTarget, playerFovDist = getClosestPlayer() end
-                if targetMode == "NPC" or targetMode == "所有" then npcTarget, npcFovDist = getNPCTarget() end
-                if playerFovDist < npcFovDist then currentTargetPart = playerTarget else currentTargetPart = npcTarget end
+                if frameCounter % 5 == 0 then
+                    local targetMode = SilentAimSettings.TargetMode
+                    local playerTarget, playerFovDist = nil, math.huge
+                    local npcTarget, npcFovDist = nil, math.huge
+                    if targetMode == "玩家" or targetMode == "所有" then playerTarget, playerFovDist = getClosestPlayer() end
+                    if targetMode == "NPC" or targetMode == "所有" then npcTarget, npcFovDist = getNPCTarget() end
+                    if playerFovDist < npcFovDist then autoTargetPart = playerTarget else autoTargetPart = npcTarget end
+                end
+                currentTargetPart = autoTargetPart
             end
         end
 
@@ -455,6 +468,7 @@ resume(create(function()
                 if lockedTargetCharacter and lockedTargetCharacter == currentTargetPart.Parent then
                     lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
+                if autoTargetPart and autoTargetPart == currentTargetPart then autoTargetPart = nil end
                 currentTargetPart = nil
             end
         end
