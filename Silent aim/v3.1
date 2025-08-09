@@ -36,7 +36,7 @@ local SilentAimSettings = {
     ShowTargetDistance = false,
     TargetMode = "玩家",
     ShowDamageNotifier = false,
-    IndependentPanelPosition = Vector2.new(200, 200)
+    IndependentPanelPosition = "200,200"
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -107,11 +107,10 @@ FOVStroke.Name = "FOVStroke"; FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.B
 local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
 FOVCorner.Name = "FOVCorner"; FOVCorner.CornerRadius = UDim.new(1, 0)
 
--- Independent Draggable Panel
 local IndependentPanelGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 IndependentPanelGui.Name = "IndependentPanelGui"; IndependentPanelGui.ResetOnSpawn = false; IndependentPanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 local IndependentPanelFrame = Instance.new("Frame", IndependentPanelGui)
-IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 80); IndependentPanelFrame.Position = UDim2.fromOffset(SilentAimSettings.IndependentPanelPosition.X, SilentAimSettings.IndependentPanelPosition.Y)
+IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 80); 
 IndependentPanelFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); IndependentPanelFrame.BackgroundTransparency = 0.3; IndependentPanelFrame.BorderSizePixel = 1; IndependentPanelFrame.BorderColor3 = Color3.new(1,1,1)
 IndependentPanelFrame.Visible = false; IndependentPanelFrame.Active = true; IndependentPanelFrame.Draggable = true
 local IPCorner = Instance.new("UICorner", IndependentPanelFrame); IPCorner.CornerRadius = UDim.new(0, 4)
@@ -125,11 +124,9 @@ for i, name in ipairs({"Name", "Health", "Distance"}) do
     label.Font = Enum.Font.SourceSans; label.TextSize = 14; label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left; label.LayoutOrder = i
     independent_panel_texts[name] = label
 end
-IndependentPanelFrame:GetPropertyChangedSignal("Position"):Connect(function()
-    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-        SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset
-    end
-end)
+IndependentPanelFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then IndependentPanelFrame.Position = UDim2.fromOffset(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) end end)
+IndependentPanelFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset end end)
+
 
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
@@ -292,7 +289,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.4 - 独立面板版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.5 - 混合锁定修复版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -354,7 +351,6 @@ MiscGroupBox:AddButton("重置独立面板位置", function()
     local pos = SilentAimSettings.IndependentPanelPosition:split(",")
     IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
 end)
-
 
 local ManualLockGroupBox = Tabs.Misc:AddLeftGroupbox("锁定")
 ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", {
@@ -432,36 +428,23 @@ resume(create(function()
             if lockedTargetCharacter then
                 local humanoid = lockedTargetCharacter:FindFirstChildOfClass("Humanoid")
                 local rootPart = lockedTargetCharacter.PrimaryPart or lockedTargetCharacter:FindFirstChild("HumanoidRootPart")
-                if humanoid and humanoid.Health > 0 and rootPart then
+                if humanoid and humanoid.Health > 0 and rootPart and (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then
                     local dist = (LocalPlayer.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
                     if dist <= SilentAimSettings.MaxDistance then
                         currentTargetPart = lockedTargetCharacter:FindFirstChild(SilentAimSettings.TargetPart) or rootPart
                     else
-                        lockedTargetCharacter = nil
-                        Options.TargetSelectorDropdown:SetValue("无")
+                        lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                     end
                 else
-                    lockedTargetCharacter = nil
-                    Options.TargetSelectorDropdown:SetValue("无")
+                    lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
             else
                 local targetMode = SilentAimSettings.TargetMode
                 local playerTarget, playerFovDist = nil, math.huge
                 local npcTarget, npcFovDist = nil, math.huge
-
-                if targetMode == "玩家" or targetMode == "所有" then
-                    playerTarget, playerFovDist = getClosestPlayer()
-                end
-
-                if targetMode == "NPC" or targetMode == "所有" then
-                    npcTarget, npcFovDist = getNPCTarget()
-                end
-
-                if playerFovDist < npcFovDist then
-                    currentTargetPart = playerTarget
-                else
-                    currentTargetPart = npcTarget
-                end
+                if targetMode == "玩家" or targetMode == "所有" then playerTarget, playerFovDist = getClosestPlayer() end
+                if targetMode == "NPC" or targetMode == "所有" then npcTarget, npcFovDist = getNPCTarget() end
+                if playerFovDist < npcFovDist then currentTargetPart = playerTarget else currentTargetPart = npcTarget end
             end
         end
 
@@ -470,8 +453,7 @@ resume(create(function()
             if not humanoid or humanoid.Health <= 0 then
                 lastHealthValues[humanoid] = nil
                 if lockedTargetCharacter and lockedTargetCharacter == currentTargetPart.Parent then
-                    lockedTargetCharacter = nil
-                    Options.TargetSelectorDropdown:SetValue("无")
+                    lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
                 currentTargetPart = nil
             end
@@ -482,22 +464,14 @@ resume(create(function()
             if humanoid then
                 local currentHealth = humanoid.Health
                 local lastHealth = lastHealthValues[humanoid]
-
                 if lastHealth and currentHealth < lastHealth then
                     local damage = math.floor(lastHealth - currentHealth)
                     if damage > 0 then
-                        local indicator = {}
-                        indicator.Created = tick()
-                        indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
-                        
+                        local indicator = {}; indicator.Created = tick(); indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
                         indicator.TextObject = Drawing.new("Text")
-                        indicator.TextObject.Font = Drawing.Fonts.Monospace
-                        indicator.TextObject.Text = string.format("-%d", damage)
-                        indicator.TextObject.Color = Color3.fromRGB(255, 50, 50)
-                        indicator.TextObject.Size = 20
-                        indicator.TextObject.Center = true
-                        indicator.TextObject.Outline = true
-                        
+                        indicator.TextObject.Font = Drawing.Fonts.Monospace; indicator.TextObject.Text = string.format("-%d", damage)
+                        indicator.TextObject.Color = Color3.fromRGB(255, 50, 50); indicator.TextObject.Size = 20
+                        indicator.TextObject.Center = true; indicator.TextObject.Outline = true
                         table.insert(damageIndicators, indicator)
                     end
                 end
@@ -506,17 +480,13 @@ resume(create(function()
         end
 
         for i = #damageIndicators, 1, -1 do
-            local indicator = damageIndicators[i]
-            local age = tick() - indicator.Created
-
+            local indicator = damageIndicators[i]; local age = tick() - indicator.Created
             if age > DAMAGE_INDICATOR_FADE_TIME then
-                indicator.TextObject:Remove()
-                table.remove(damageIndicators, i)
+                indicator.TextObject:Remove(); table.remove(damageIndicators, i)
             else
                 local progress = age / DAMAGE_INDICATOR_FADE_TIME
                 indicator.TextObject.Position = indicator.Position - Vector2.new(0, progress * 40)
-                indicator.TextObject.Transparency = progress
-                indicator.TextObject.Visible = true
+                indicator.TextObject.Transparency = progress; indicator.TextObject.Visible = true
             end
         end
 
@@ -526,21 +496,12 @@ resume(create(function()
             local RootToViewportPoint, IsOnScreen = getPositionOnScreen(currentTargetPart.Position)
             if IsOnScreen then
                 local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
-
                 if Toggles.ShowTargetToggle.Value then
                     local indicatorStyle = Options.IndicatorStyleDropdown.Value
-                    local finalIndicatorColor
-                    local isTargetVisible = IsObjectVisible(currentTargetPart.Parent)
-    
-                    if isTargetVisible then
-                        finalIndicatorColor = Color3.fromRGB(0, 255, 0)
-                        indicatorRadius = indicatorRadius * 0.6
-                    elseif SilentAimSettings.IndicatorRainbowEnabled then
-                        finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
-                    else
-                        finalIndicatorColor = Options.TargetIndicatorColorPicker.Value
-                    end
-                    
+                    local finalIndicatorColor; local isTargetVisible = IsObjectVisible(currentTargetPart.Parent)
+                    if isTargetVisible then finalIndicatorColor = Color3.fromRGB(0, 255, 0); indicatorRadius = indicatorRadius * 0.6
+                    elseif SilentAimSettings.IndicatorRainbowEnabled then finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
+                    else finalIndicatorColor = Options.TargetIndicatorColorPicker.Value end
                     if indicatorStyle == "Circle" then
                         target_indicator_circle.Visible = true; target_indicator_circle.Color = finalIndicatorColor; target_indicator_circle.Radius = indicatorRadius; target_indicator_circle.Position = RootToViewportPoint
                     elseif indicatorStyle == "Triangle" then
@@ -560,7 +521,6 @@ resume(create(function()
                 local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
                 local player = Players:GetPlayerFromCharacter(targetCharacter)
                 local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-
                 if humanoid and localRoot then
                     local targetName = player and player.Name or targetCharacter.Name
                     local health = math.floor(humanoid.Health)
@@ -575,55 +535,24 @@ resume(create(function()
                         if Toggles.ShowTargetNameToggle.Value then independent_panel_texts.Name.Text = "目标: " .. targetName end
                         if Toggles.ShowTargetHealthToggle.Value then independent_panel_texts.Health.Text = string.format("血量: %d", health) end
                         if Toggles.ShowTargetDistanceToggle.Value then independent_panel_texts.Distance.Text = string.format("距离: %dm", dist) end
-                    
-                    elseif infoStyle == "面板" then
-                        local linesDrawn = 0
-                        local lineHeight = 15
-                        local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
-
-                        if Toggles.ShowTargetNameToggle.Value then
-                            local textObj = panel_info_texts.Name
-                            textObj.Text = targetName; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true
-                            linesDrawn = linesDrawn + 1
-                        end
-                        if Toggles.ShowTargetHealthToggle.Value then
-                            local textObj = panel_info_texts.Health
-                            textObj.Text = string.format("血量: %d", health); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true
-                            linesDrawn = linesDrawn + 1
-                        end
-                        if Toggles.ShowTargetDistanceToggle.Value then
-                            local textObj = panel_info_texts.Distance
-                            textObj.Text = string.format("距离: %dm", dist); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true
-                            linesDrawn = linesDrawn + 1
-                        end
-                        
-                        if linesDrawn > 0 then
-                            panel_info_bg.Position = infoPos; panel_info_bg.Size = Vector2.new(120, 10 + (linesDrawn * lineHeight)); panel_info_bg.Visible = true
-                        end
-
-                    elseif infoStyle == "头顶" then
-                        local linesDrawn = 0
-                        local lineHeight = 15
-                        local base_y = RootToViewportPoint.Y - indicatorRadius - 10
-
-                        if Toggles.ShowTargetNameToggle.Value then
-                            local textObj = overhead_info_texts.Name
-                            textObj.Text = string.format("[%s]", targetName); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true
-                            linesDrawn = linesDrawn + 1
-                        end
-                        if Toggles.ShowTargetHealthToggle.Value then
-                            local textObj = overhead_info_texts.Health
-                            textObj.Text = string.format("[%d]", health); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true
-                            linesDrawn = linesDrawn + 1
-                        end
-                        if Toggles.ShowTargetDistanceToggle.Value then
-                            local textObj = overhead_info_texts.Distance
-                            textObj.Text = string.format("[%dm]", dist); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true
-                            linesDrawn = linesDrawn + 1
-                        end
+                    elseif infoStyle == "面板" and IsOnScreen then
+                        local linesDrawn = 0; local lineHeight = 15; local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
+                        if Toggles.ShowTargetNameToggle.Value then local textObj = panel_info_texts.Name; textObj.Text = targetName; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
+                        if Toggles.ShowTargetHealthToggle.Value then local textObj = panel_info_texts.Health; textObj.Text = string.format("血量: %d", health); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
+                        if Toggles.ShowTargetDistanceToggle.Value then local textObj = panel_info_texts.Distance; textObj.Text = string.format("距离: %dm", dist); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
+                        if linesDrawn > 0 then panel_info_bg.Position = infoPos; panel_info_bg.Size = Vector2.new(120, 10 + (linesDrawn * lineHeight)); panel_info_bg.Visible = true end
+                    elseif infoStyle == "头顶" and IsOnScreen then
+                        local linesDrawn = 0; local lineHeight = 15; local base_y = RootToViewportPoint.Y - indicatorRadius - 10
+                        if Toggles.ShowTargetNameToggle.Value then local textObj = overhead_info_texts.Name; textObj.Text = string.format("[%s]", targetName); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
+                        if Toggles.ShowTargetHealthToggle.Value then local textObj = overhead_info_texts.Health; textObj.Text = string.format("[%d]", health); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
+                        if Toggles.ShowTargetDistanceToggle.Value then local textObj = overhead_info_texts.Distance; textObj.Text = string.format("[%dm]", dist); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                     end
                 end
             end
+        elseif isEnabled and SilentAimSettings.TargetInfoStyle == "独立面板" then
+            IndependentPanelFrame.Visible = true
+            independent_panel_texts.Name.Visible = true; independent_panel_texts.Health.Visible = true; independent_panel_texts.Distance.Visible = false
+            independent_panel_texts.Name.Text = "状态: 索敌中..."; independent_panel_texts.Health.Text = "目标: 无"
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
