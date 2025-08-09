@@ -35,7 +35,7 @@ local SilentAimSettings = {
     ShowTargetHealth = false,
     ShowTargetDistance = false,
     TargetMode = "玩家",
-    StickyLock = false,
+    LockOnMode = "动态锁定",
     ShowDamageNotifier = false
 }
 
@@ -337,8 +337,6 @@ PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min
 local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
 MiscGroupBox:AddToggle("OptimizeToggle", { Text = "优先选择最近目标", Default = SilentAimSettings.OptimizeForDistance })
 Toggles.OptimizeToggle:OnChanged(function(Value) SilentAimSettings.OptimizeForDistance = Value end)
-MiscGroupBox:AddToggle("StickyLockToggle", { Text = "锁定", Default = SilentAimSettings.StickyLock })
-Toggles.StickyLockToggle:OnChanged(function(Value) SilentAimSettings.StickyLock = Value end)
 MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier })
 Toggles.DamageNotifierToggle:OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
 MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
@@ -349,7 +347,16 @@ Toggles.ShowTargetHealthToggle:OnChanged(function(Value) SilentAimSettings.ShowT
 MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance })
 Toggles.ShowTargetDistanceToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
 
-FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
+local LockOnGroupBox = Tabs.Misc:AddLeftGroupbox("锁定设置")
+LockOnGroupBox:AddDropdown("LockOnModeDropdown", {
+    Text = "锁定模式",
+    Default = SilentAimSettings.LockOnMode,
+    Values = {"动态锁定", "粘性锁定"}
+}):OnChanged(function(Value)
+    SilentAimSettings.LockOnMode = Value
+end)
+
+FOVCircleGui.enabled = Toggles.FOVVisibleToggle.Value
 FOVStroke.Color = Options.FOVColorPicker.Value
 FOVCircleFrame.Size = UDim2.fromOffset(Options.FOVRadiusSlider.Value * 2, Options.FOVRadiusSlider.Value * 2)
 
@@ -379,7 +386,7 @@ resume(create(function()
         end
 
         if isEnabled then
-            if SilentAimSettings.StickyLock then
+            if SilentAimSettings.LockOnMode == "粘性锁定" then
                 if lockedTarget then
                     local char = lockedTarget.Parent
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -400,7 +407,7 @@ resume(create(function()
                 if not lockedTarget then
                     local playerTarget, playerFovDist = getClosestPlayer()
                     local npcTarget, npcFovDist = getNPCTarget()
-                    if playerFovDist < npcFovDist then lockedTarget = playerTarget else lockedTarget = npcTarget end
+                    if playerFovDist < npcFovDist then lockedTarget = playerTarget elseif npcFovDist ~= math.huge then lockedTarget = npcTarget else lockedTarget = nil end
                 end
                 currentTargetPart = lockedTarget
             else
