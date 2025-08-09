@@ -186,7 +186,7 @@ local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options; local Toggles = Library.Toggles
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.5 (最终修复版)", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.6 (稳定版)", Center = true, AutoShow = true })
 local Tabs = { Main = Window:AddTab("主页", "user"), Misc = Window:AddTab("杂项", "boxes"), ["UI Settings"] = Window:AddTab("UI设置", "settings") }
 
 local MainGroupBox = Tabs.Main:AddLeftGroupbox("主设置", "boxes")
@@ -259,7 +259,7 @@ resume(create(function()
             Options.TargetSelectionDropdown:SetValues({"无"})
         end
         
-        if currentTargetPart then
+        if currentTargetPart and currentTargetPart.Parent then
             local humanoid = currentTargetPart.Parent:FindFirstChildOfClass("Humanoid")
             if humanoid and targetHealthCache[humanoid] and humanoid.Health < targetHealthCache[humanoid] then
                 local screenPos, onScreen = getPositionOnScreen(currentTargetPart.Position); if onScreen then ShowDamageIndicator(screenPos, targetHealthCache[humanoid] - humanoid.Health) end
@@ -278,7 +278,7 @@ resume(create(function()
                 end
                 
                 local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value
-                if showAnyInfo then
+                if showAnyInfo and currentTargetPart.Parent then
                     local char = currentTargetPart.Parent; local player = Players:GetPlayerFromCharacter(char); local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
                     if hum and localRoot then
