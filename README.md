@@ -1,6 +1,6 @@
 # Universal Silent Aim by euphoria
 
-![UI Screenshot](https://imgur.com/a/ip7b4Tw)
+![UI Screenshot](https://github.com/fcsdsss/c/blob/10b49e387f5eb81be862d61668b14c549699d1a6/Image_182531055796616.jpg)
 
 ---
 
