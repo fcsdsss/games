@@ -33,13 +33,13 @@ local SilentAimSettings = {
     TargetInfoStyle = "面板",
     ShowTargetName = false,
     ShowTargetHealth = false,
-
-ShowTargetDistance = false,
+    ShowTargetDistance = false,
     TargetMode = "玩家",
     ShowDamageNotifier = false,
     IndependentPanelPosition = "200,200",
     IndependentPanelPinned = false,
-    LeakAndHitMode = false
+    LeakAndHitMode = false,
+    Wallbang = false
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -319,7 +319,8 @@ local MainGroupBox = Tabs.Main:AddLeftGroupbox("主设置", "boxes")
 MainGroupBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSettings.Enabled }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
 Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
 MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
-MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查 (索敌)", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainGroupBox:AddToggle("WallbangToggle", { Text = "穿墙", Default = SilentAimSettings.Wallbang}):OnChanged(function(Value) SilentAimSettings.Wallbang = Value end)
 MainGroupBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value) SilentAimSettings.LeakAndHitMode = Value end)
 MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
@@ -627,15 +628,50 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) and currentTargetPart then
         local currentMethod = SilentAimSettings.SilentAimMethod
         if Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method then
-            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithIgnoreList) then
+                if SilentAimSettings.Wallbang then
+                    return currentTargetPart, currentTargetPart.Position, currentTargetPart.CFrame.LookVector, currentTargetPart.Material
+                end
+                local A_Ray = Arguments[2]
+                Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
+                return oldNamecall(unpack(Arguments))
+            end
         elseif Method == "FindPartOnRayWithWhitelist" and currentMethod == Method then
-            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRayWithWhitelist) then
+                if SilentAimSettings.Wallbang then
+                    return currentTargetPart, currentTargetPart.Position, currentTargetPart.CFrame.LookVector, currentTargetPart.Material
+                end
+                local A_Ray = Arguments[2]
+                Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
+                return oldNamecall(unpack(Arguments))
+            end
         elseif (Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower() then
-            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then local A_Ray = Arguments[2]; Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position)); return oldNamecall(unpack(Arguments)) end
+            if ValidateArguments(Arguments, ExpectedArguments.FindPartOnRay) then
+                if SilentAimSettings.Wallbang then
+                    return currentTargetPart, currentTargetPart.Position, currentTargetPart.CFrame.LookVector, currentTargetPart.Material
+                end
+                local A_Ray = Arguments[2]
+                Arguments[2] = Ray.new(A_Ray.Origin, getDirection(A_Ray.Origin, currentTargetPart.Position))
+                return oldNamecall(unpack(Arguments))
+            end
         elseif Method == "Raycast" and currentMethod == Method then
-            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position); return oldNamecall(unpack(Arguments)) end
+            if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
+                local origin = Arguments[2]
+                local direction = getDirection(origin, currentTargetPart.Position)
+                if SilentAimSettings.Wallbang then
+                    local wallbangParams = RaycastParams.new()
+                    wallbangParams.FilterType = Enum.RaycastFilterType.Include
+                    wallbangParams.FilterDescendantsInstances = {currentTargetPart.Parent}
+                    local newArgs = {self, origin, direction, wallbangParams}
+                    return oldNamecall(unpack(newArgs))
+                end
+                Arguments[3] = direction
+                return oldNamecall(unpack(Arguments))
+            end
         elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
-            local origin = Camera.CFrame.Position; local direction = (currentTargetPart.Position - origin).Unit; return Ray.new(origin, direction)
+            local origin = Camera.CFrame.Position
+            local direction = (currentTargetPart.Position - origin).Unit
+            return Ray.new(origin, direction)
         end
     end
     return oldNamecall(...)
