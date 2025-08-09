@@ -35,7 +35,8 @@ local SilentAimSettings = {
     ShowTargetHealth = false,
     ShowTargetDistance = false,
     TargetMode = "玩家",
-    ShowDamageNotifier = false
+    ShowDamageNotifier = false,
+    IndependentPanelPosition = Vector2.new(200, 200)
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -105,6 +106,30 @@ local FOVStroke = Instance.new("UIStroke", FOVCircleFrame)
 FOVStroke.Name = "FOVStroke"; FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; FOVStroke.Thickness = 1; FOVStroke.Transparency = 0.5
 local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
 FOVCorner.Name = "FOVCorner"; FOVCorner.CornerRadius = UDim.new(1, 0)
+
+-- Independent Draggable Panel
+local IndependentPanelGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+IndependentPanelGui.Name = "IndependentPanelGui"; IndependentPanelGui.ResetOnSpawn = false; IndependentPanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local IndependentPanelFrame = Instance.new("Frame", IndependentPanelGui)
+IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 80); IndependentPanelFrame.Position = UDim2.fromOffset(SilentAimSettings.IndependentPanelPosition.X, SilentAimSettings.IndependentPanelPosition.Y)
+IndependentPanelFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); IndependentPanelFrame.BackgroundTransparency = 0.3; IndependentPanelFrame.BorderSizePixel = 1; IndependentPanelFrame.BorderColor3 = Color3.new(1,1,1)
+IndependentPanelFrame.Visible = false; IndependentPanelFrame.Active = true; IndependentPanelFrame.Draggable = true
+local IPCorner = Instance.new("UICorner", IndependentPanelFrame); IPCorner.CornerRadius = UDim.new(0, 4)
+local IPListLayout = Instance.new("UIListLayout", IndependentPanelFrame)
+IPListLayout.Padding = UDim.new(0, 5); IPListLayout.SortOrder = Enum.SortOrder.LayoutOrder; IPListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; IPListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+local independent_panel_texts = {}
+for i, name in ipairs({"Name", "Health", "Distance"}) do
+    local label = Instance.new("TextLabel", IndependentPanelFrame)
+    label.Name = name; label.Size = UDim2.new(1, -10, 0, 15); label.BackgroundTransparency = 1
+    label.Font = Enum.Font.SourceSans; label.TextSize = 14; label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left; label.LayoutOrder = i
+    independent_panel_texts[name] = label
+end
+IndependentPanelFrame:GetPropertyChangedSignal("Position"):Connect(function()
+    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset
+    end
+end)
 
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
@@ -256,6 +281,7 @@ function hideAllVisuals()
     for _, text in pairs(overhead_info_texts) do text.Visible = false end
     panel_info_bg.Visible = false
     for _, text in pairs(panel_info_texts) do text.Visible = false end
+    if IndependentPanelFrame then IndependentPanelFrame.Visible = false end
 end
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -266,7 +292,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.3 - 混合锁定版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.4 - 独立面板版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -314,15 +340,21 @@ PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预�
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
 local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
-MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier })
-Toggles.DamageNotifierToggle:OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
-MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
+MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
 MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName })
 Toggles.ShowTargetNameToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
 MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth })
 Toggles.ShowTargetHealthToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
 MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance })
 Toggles.ShowTargetDistanceToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
+MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier })
+Toggles.DamageNotifierToggle:OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
+MiscGroupBox:AddButton("重置独立面板位置", function()
+    SilentAimSettings.IndependentPanelPosition = "200,200"
+    local pos = SilentAimSettings.IndependentPanelPosition:split(",")
+    IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
+end)
+
 
 local ManualLockGroupBox = Tabs.Misc:AddLeftGroupbox("锁定")
 ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", {
@@ -384,6 +416,9 @@ end)
 local lastHealthValues = {}
 local damageIndicators = {}
 local DAMAGE_INDICATOR_FADE_TIME = 1
+
+local pos = SilentAimSettings.IndependentPanelPosition:split(",")
+IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
 
 resume(create(function()
     RenderStepped:Connect(function()
@@ -517,78 +552,74 @@ resume(create(function()
                         for i = 1, 5 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]] end
                     end
                 end
+            end
 
-                local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value
-                if showAnyInfo then
-                    local targetCharacter = currentTargetPart.Parent
-                    local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
-                    local player = Players:GetPlayerFromCharacter(targetCharacter)
-                    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    
-                    if humanoid and localRoot then
-                        local targetName = player and player.Name or targetCharacter.Name
-                        local health = math.floor(humanoid.Health)
-                        local dist = math.floor((localRoot.Position - currentTargetPart.Position).Magnitude)
-                        local infoStyle = SilentAimSettings.TargetInfoStyle
+            local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value
+            if showAnyInfo then
+                local targetCharacter = currentTargetPart.Parent
+                local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+                local player = Players:GetPlayerFromCharacter(targetCharacter)
+                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+                if humanoid and localRoot then
+                    local targetName = player and player.Name or targetCharacter.Name
+                    local health = math.floor(humanoid.Health)
+                    local dist = math.floor((localRoot.Position - currentTargetPart.Position).Magnitude)
+                    local infoStyle = SilentAimSettings.TargetInfoStyle
+                    
+                    if infoStyle == "独立面板" then
+                        IndependentPanelFrame.Visible = true
+                        independent_panel_texts.Name.Visible = Toggles.ShowTargetNameToggle.Value
+                        independent_panel_texts.Health.Visible = Toggles.ShowTargetHealthToggle.Value
+                        independent_panel_texts.Distance.Visible = Toggles.ShowTargetDistanceToggle.Value
+                        if Toggles.ShowTargetNameToggle.Value then independent_panel_texts.Name.Text = "目标: " .. targetName end
+                        if Toggles.ShowTargetHealthToggle.Value then independent_panel_texts.Health.Text = string.format("血量: %d", health) end
+                        if Toggles.ShowTargetDistanceToggle.Value then independent_panel_texts.Distance.Text = string.format("距离: %dm", dist) end
+                    
+                    elseif infoStyle == "面板" then
+                        local linesDrawn = 0
+                        local lineHeight = 15
+                        local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
+
+                        if Toggles.ShowTargetNameToggle.Value then
+                            local textObj = panel_info_texts.Name
+                            textObj.Text = targetName; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true
+                            linesDrawn = linesDrawn + 1
+                        end
+                        if Toggles.ShowTargetHealthToggle.Value then
+                            local textObj = panel_info_texts.Health
+                            textObj.Text = string.format("血量: %d", health); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true
+                            linesDrawn = linesDrawn + 1
+                        end
+                        if Toggles.ShowTargetDistanceToggle.Value then
+                            local textObj = panel_info_texts.Distance
+                            textObj.Text = string.format("距离: %dm", dist); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true
+                            linesDrawn = linesDrawn + 1
+                        end
                         
-                        if infoStyle == "面板" then
-                            local linesDrawn = 0
-                            local lineHeight = 15
-                            local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
+                        if linesDrawn > 0 then
+                            panel_info_bg.Position = infoPos; panel_info_bg.Size = Vector2.new(120, 10 + (linesDrawn * lineHeight)); panel_info_bg.Visible = true
+                        end
 
-                            if Toggles.ShowTargetNameToggle.Value then
-                                local textObj = panel_info_texts.Name
-                                textObj.Text = targetName
-                                textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight))
-                                textObj.Visible = true
-                                linesDrawn = linesDrawn + 1
-                            end
-                            if Toggles.ShowTargetHealthToggle.Value then
-                                local textObj = panel_info_texts.Health
-                                textObj.Text = string.format("血量: %d", health)
-                                textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight))
-                                textObj.Visible = true
-                                linesDrawn = linesDrawn + 1
-                            end
-                            if Toggles.ShowTargetDistanceToggle.Value then
-                                local textObj = panel_info_texts.Distance
-                                textObj.Text = string.format("距离: %dm", dist)
-                                textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight))
-                                textObj.Visible = true
-                                linesDrawn = linesDrawn + 1
-                            end
-                            
-                            if linesDrawn > 0 then
-                                panel_info_bg.Position = infoPos
-                                panel_info_bg.Size = Vector2.new(120, 10 + (linesDrawn * lineHeight))
-                                panel_info_bg.Visible = true
-                            end
-                        elseif infoStyle == "头顶" then
-                            local linesDrawn = 0
-                            local lineHeight = 15
-                            local base_y = RootToViewportPoint.Y - indicatorRadius - 10
+                    elseif infoStyle == "头顶" then
+                        local linesDrawn = 0
+                        local lineHeight = 15
+                        local base_y = RootToViewportPoint.Y - indicatorRadius - 10
 
-                            if Toggles.ShowTargetNameToggle.Value then
-                                local textObj = overhead_info_texts.Name
-                                textObj.Text = string.format("[%s]", targetName)
-                                textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight))
-                                textObj.Visible = true
-                                linesDrawn = linesDrawn + 1
-                            end
-                            if Toggles.ShowTargetHealthToggle.Value then
-                                local textObj = overhead_info_texts.Health
-                                textObj.Text = string.format("[%d]", health)
-                                textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight))
-                                textObj.Visible = true
-                                linesDrawn = linesDrawn + 1
-                            end
-                            if Toggles.ShowTargetDistanceToggle.Value then
-                                local textObj = overhead_info_texts.Distance
-                                textObj.Text = string.format("[%dm]", dist)
-                                textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight))
-                                textObj.Visible = true
-                                linesDrawn = linesDrawn + 1
-                            end
+                        if Toggles.ShowTargetNameToggle.Value then
+                            local textObj = overhead_info_texts.Name
+                            textObj.Text = string.format("[%s]", targetName); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true
+                            linesDrawn = linesDrawn + 1
+                        end
+                        if Toggles.ShowTargetHealthToggle.Value then
+                            local textObj = overhead_info_texts.Health
+                            textObj.Text = string.format("[%d]", health); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true
+                            linesDrawn = linesDrawn + 1
+                        end
+                        if Toggles.ShowTargetDistanceToggle.Value then
+                            local textObj = overhead_info_texts.Distance
+                            textObj.Text = string.format("[%dm]", dist); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true
+                            linesDrawn = linesDrawn + 1
                         end
                     end
                 end
@@ -667,6 +698,7 @@ end))
 
 Library:OnUnload(function()
     FOVCircleGui:Destroy()
+    if IndependentPanelGui then IndependentPanelGui:Destroy() end
     hideAllVisuals()
 end)
 
