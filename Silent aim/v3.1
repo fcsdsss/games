@@ -71,8 +71,6 @@ local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
 local lockedTargetCharacter = nil
-local autoTargetPart = nil
-local frameCounter = 0
 
 local target_indicator_circle = Drawing.new("Circle")
 target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
@@ -129,7 +127,6 @@ for i, name in ipairs({"Name", "Health", "Distance"}) do
 end
 IndependentPanelFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then IndependentPanelFrame.Position = UDim2.fromOffset(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) end end)
 IndependentPanelFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset end end)
-
 
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
@@ -292,7 +289,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.6 - 性能优化版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.8 - 最终修复版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -426,7 +423,6 @@ IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos
 
 resume(create(function()
     RenderStepped:Connect(function()
-        frameCounter = frameCounter + 1
         if SilentAimSettings.IndicatorRotationEnabled then currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2) end
         if SilentAimSettings.IndicatorRainbowEnabled then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
         
@@ -447,17 +443,13 @@ resume(create(function()
                 else
                     lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
-                autoTargetPart = nil
             else
-                if frameCounter % 5 == 0 then
-                    local targetMode = SilentAimSettings.TargetMode
-                    local playerTarget, playerFovDist = nil, math.huge
-                    local npcTarget, npcFovDist = nil, math.huge
-                    if targetMode == "玩家" or targetMode == "所有" then playerTarget, playerFovDist = getClosestPlayer() end
-                    if targetMode == "NPC" or targetMode == "所有" then npcTarget, npcFovDist = getNPCTarget() end
-                    if playerFovDist < npcFovDist then autoTargetPart = playerTarget else autoTargetPart = npcTarget end
-                end
-                currentTargetPart = autoTargetPart
+                local targetMode = SilentAimSettings.TargetMode
+                local playerTarget, playerFovDist = nil, math.huge
+                local npcTarget, npcFovDist = nil, math.huge
+                if targetMode == "玩家" or targetMode == "所有" then playerTarget, playerFovDist = getClosestPlayer() end
+                if targetMode == "NPC" or targetMode == "所有" then npcTarget, npcFovDist = getNPCTarget() end
+                if playerFovDist < npcFovDist then currentTargetPart = playerTarget else currentTargetPart = npcTarget end
             end
         end
 
@@ -468,7 +460,6 @@ resume(create(function()
                 if lockedTargetCharacter and lockedTargetCharacter == currentTargetPart.Parent then
                     lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
                 end
-                if autoTargetPart and autoTargetPart == currentTargetPart then autoTargetPart = nil end
                 currentTargetPart = nil
             end
         end
@@ -508,24 +499,23 @@ resume(create(function()
         
         if isEnabled and currentTargetPart then
             local RootToViewportPoint, IsOnScreen = getPositionOnScreen(currentTargetPart.Position)
-            if IsOnScreen then
+
+            if IsOnScreen and Toggles.ShowTargetToggle.Value then
                 local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
-                if Toggles.ShowTargetToggle.Value then
-                    local indicatorStyle = Options.IndicatorStyleDropdown.Value
-                    local finalIndicatorColor; local isTargetVisible = IsObjectVisible(currentTargetPart.Parent)
-                    if isTargetVisible then finalIndicatorColor = Color3.fromRGB(0, 255, 0); indicatorRadius = indicatorRadius * 0.6
-                    elseif SilentAimSettings.IndicatorRainbowEnabled then finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
-                    else finalIndicatorColor = Options.TargetIndicatorColorPicker.Value end
-                    if indicatorStyle == "Circle" then
-                        target_indicator_circle.Visible = true; target_indicator_circle.Color = finalIndicatorColor; target_indicator_circle.Radius = indicatorRadius; target_indicator_circle.Position = RootToViewportPoint
-                    elseif indicatorStyle == "Triangle" then
-                        local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 3)
-                        for i = 1, 3 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[i]; line.To = points[i % 3 + 1] end
-                    elseif indicatorStyle == "Pentagram" then
-                        local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 5)
-                        local pentagram_order = {1, 3, 5, 2, 4}
-                        for i = 1, 5 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]] end
-                    end
+                local indicatorStyle = Options.IndicatorStyleDropdown.Value
+                local finalIndicatorColor; local isTargetVisible = IsObjectVisible(currentTargetPart.Parent)
+                if isTargetVisible then finalIndicatorColor = Color3.fromRGB(0, 255, 0); indicatorRadius = indicatorRadius * 0.6
+                elseif SilentAimSettings.IndicatorRainbowEnabled then finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
+                else finalIndicatorColor = Options.TargetIndicatorColorPicker.Value end
+                if indicatorStyle == "Circle" then
+                    target_indicator_circle.Visible = true; target_indicator_circle.Color = finalIndicatorColor; target_indicator_circle.Radius = indicatorRadius; target_indicator_circle.Position = RootToViewportPoint
+                elseif indicatorStyle == "Triangle" then
+                    local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 3)
+                    for i = 1, 3 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[i]; line.To = points[i % 3 + 1] end
+                elseif indicatorStyle == "Pentagram" then
+                    local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 5)
+                    local pentagram_order = {1, 3, 5, 2, 4}
+                    for i = 1, 5 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]] end
                 end
             end
 
@@ -550,12 +540,14 @@ resume(create(function()
                         if Toggles.ShowTargetHealthToggle.Value then independent_panel_texts.Health.Text = string.format("血量: %d", health) end
                         if Toggles.ShowTargetDistanceToggle.Value then independent_panel_texts.Distance.Text = string.format("距离: %dm", dist) end
                     elseif infoStyle == "面板" and IsOnScreen then
+                        local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
                         local linesDrawn = 0; local lineHeight = 15; local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
                         if Toggles.ShowTargetNameToggle.Value then local textObj = panel_info_texts.Name; textObj.Text = targetName; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetHealthToggle.Value then local textObj = panel_info_texts.Health; textObj.Text = string.format("血量: %d", health); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetDistanceToggle.Value then local textObj = panel_info_texts.Distance; textObj.Text = string.format("距离: %dm", dist); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if linesDrawn > 0 then panel_info_bg.Position = infoPos; panel_info_bg.Size = Vector2.new(120, 10 + (linesDrawn * lineHeight)); panel_info_bg.Visible = true end
                     elseif infoStyle == "头顶" and IsOnScreen then
+                        local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
                         local linesDrawn = 0; local lineHeight = 15; local base_y = RootToViewportPoint.Y - indicatorRadius - 10
                         if Toggles.ShowTargetNameToggle.Value then local textObj = overhead_info_texts.Name; textObj.Text = string.format("[%s]", targetName); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetHealthToggle.Value then local textObj = overhead_info_texts.Health; textObj.Text = string.format("[%d]", health); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
@@ -566,7 +558,7 @@ resume(create(function()
         elseif isEnabled and SilentAimSettings.TargetInfoStyle == "独立面板" then
             IndependentPanelFrame.Visible = true
             independent_panel_texts.Name.Visible = true; independent_panel_texts.Health.Visible = true; independent_panel_texts.Distance.Visible = false
-            independent_panel_texts.Name.Text = "状态: 索敌中..."; independent_panel_texts.Health.Text = "目标: 无"
+            independent_panel_texts.Name.Text = "状态: 自动索敌中..."; independent_panel_texts.Health.Text = "目标: 无"
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
