@@ -8,7 +8,7 @@ end
 
 local SilentAimSettings = {
     Enabled = false,
-    ClassName = "Universal Silent Aim - Final Whitelist",
+    ClassName = "Universal Silent Aim",
     ToggleKey = "RightAlt",
     TeamCheck = false,
     VisibleCheck = false,
@@ -33,7 +33,8 @@ local SilentAimSettings = {
     TargetInfoStyle = "面板",
     ShowTargetName = false,
     ShowTargetHealth = false,
-    ShowTargetDistance = false,
+
+ShowTargetDistance = false,
     TargetMode = "玩家",
     ShowDamageNotifier = false,
     IndependentPanelPosition = "200,200",
@@ -64,7 +65,6 @@ local resume = coroutine.resume
 local create = coroutine.create
 
 local ValidTargetParts = {"Head", "HumanoidRootPart"}
-local bodyPartPriority = {"Head", "UpperTorso", "HumanoidRootPart", "LowerTorso"}
 local PredictionAmount = 0.165
 
 local currentTargetPart = nil
@@ -176,17 +176,17 @@ local function updateNPCs()
     end
 end
 
-local function isPartVisible(part)
+local function isPartVisible(part, customOrigin)
     if not part then return false end
     local localCharacter = LocalPlayer.Character
     if not localCharacter then return false end
-    local cameraPosition = Camera.CFrame.Position
-    local direction = part.Position - cameraPosition
+    local origin = customOrigin or Camera.CFrame.Position
+    local direction = part.Position - origin
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {localCharacter}
-    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 0.1), raycastParams)
-    return not raycastResult or raycastResult.Instance:IsDescendantOf(part.Parent)
+    raycastParams.FilterDescendantsInstances = {localCharacter, part.Parent}
+    local raycastResult = workspace:Raycast(origin, direction.Unit * direction.Magnitude, raycastParams)
+    return not raycastResult
 end
 
 local function getClosestPlayer()
@@ -202,7 +202,7 @@ local function getClosestPlayer()
             local Character = Player.Character
             local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
             if Character and Character:FindFirstChild("HumanoidRootPart") and Humanoid and Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not isPartVisible(Character.HumanoidRootPart)) then
+                if not (SilentAimSettings.VisibleCheck and not isPartVisible(Character.HumanoidRootPart, LocalPlayerCharacter.Head.Position)) then
                     local physicalDist = (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local TargetPartName = SilentAimSettings.TargetPart
@@ -247,7 +247,7 @@ local function getNPCTarget()
     for _, NPCModel in ipairs(npcList) do
         local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
         if NPCModel and NPCModel.PrimaryPart and Humanoid and Humanoid.Health > 0 then
-            if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart)) then
+            if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart, LocalPlayerCharacter.Head.Position)) then
                 local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
                 if physicalDist <= SilentAimSettings.MaxDistance then
                     local TargetPartName = SilentAimSettings.TargetPart
@@ -307,7 +307,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.1", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.1测试版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -319,7 +319,7 @@ local MainGroupBox = Tabs.Main:AddLeftGroupbox("主设置", "boxes")
 MainGroupBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSettings.Enabled }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
 Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
 MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
-MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查 (索敌)", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
 MainGroupBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value) SilentAimSettings.LeakAndHitMode = Value end)
 MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
@@ -460,9 +460,15 @@ resume(create(function()
                 if targetMode == "NPC" or targetMode == "所有" then npcTarget = getNPCTarget() end
 
                 if playerTarget and npcTarget then
-                    local pDist = (LocalPlayer.Character.HumanoidRootPart.Position - playerTarget.HumanoidRootPart.Position).Magnitude
-                    local nDist = (LocalPlayer.Character.HumanoidRootPart.Position - npcTarget.HumanoidRootPart.Position).Magnitude
-                    currentTargetCharacter = pDist < nDist and playerTarget or npcTarget
+                    if SilentAimSettings.PriorityMode == "最低血量" then
+                        local pHumanoid = playerTarget:FindFirstChildOfClass("Humanoid")
+                        local nHumanoid = npcTarget:FindFirstChildOfClass("Humanoid")
+                        currentTargetCharacter = (pHumanoid and nHumanoid and pHumanoid.Health <= nHumanoid.Health) and playerTarget or npcTarget
+                    else
+                        local pDist = (LocalPlayer.Character.HumanoidRootPart.Position - playerTarget.HumanoidRootPart.Position).Magnitude
+                        local nDist = (LocalPlayer.Character.HumanoidRootPart.Position - npcTarget.HumanoidRootPart.Position).Magnitude
+                        currentTargetCharacter = pDist < nDist and playerTarget or npcTarget
+                    end
                 else
                     currentTargetCharacter = playerTarget or npcTarget
                 end
@@ -478,11 +484,12 @@ resume(create(function()
                 currentTargetCharacter = nil
             else
                 if SilentAimSettings.LeakAndHitMode then
-                    for _, partName in ipairs(bodyPartPriority) do
-                        local part = currentTargetCharacter:FindFirstChild(partName)
-                        if part and isPartVisible(part) then
-                            currentTargetPart = part
-                            break
+                    for _, part in ipairs(currentTargetCharacter:GetDescendants()) do
+                        if part:IsA("BasePart") and part.Parent == currentTargetCharacter then
+                            if isPartVisible(part) then
+                                currentTargetPart = part
+                                break
+                            end
                         end
                     end
                 else
