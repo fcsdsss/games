@@ -656,16 +656,16 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
             end
         elseif Method == "Raycast" and currentMethod == Method then
             if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                local origin = Arguments[2]
-                local direction = getDirection(origin, currentTargetPart.Position)
                 if SilentAimSettings.Wallbang then
+                    local origin = Arguments[2]
+                    local direction = getDirection(origin, currentTargetPart.Position)
                     local wallbangParams = RaycastParams.new()
                     wallbangParams.FilterType = Enum.RaycastFilterType.Include
                     wallbangParams.FilterDescendantsInstances = {currentTargetPart.Parent}
                     local newArgs = {self, origin, direction, wallbangParams}
                     return oldNamecall(unpack(newArgs))
                 end
-                Arguments[3] = direction
+                Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
                 return oldNamecall(unpack(Arguments))
             end
         elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
