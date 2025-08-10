@@ -171,19 +171,17 @@ local function isNPC(obj)
     return obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0 and obj:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(obj)
 end
 
--- [修改] 更新NPC列表的函数，以包含按名称搜索的逻辑
 local function updateNPCs()
     local newNpcList = {}
-    local addedNpcs = {} -- 用于防止重复添加
+    local addedNpcs = {}
 
-    -- 如果启用了名称索敌，则优先根据名称查找NPC
     if SilentAimSettings.EnableNameTargeting then
         local targetNames = {}
         if SilentAimSettings.TargetName1 and SilentAimSettings.TargetName1 ~= "" then targetNames[SilentAimSettings.TargetName1] = true end
         if SilentAimSettings.TargetName2 and SilentAimSettings.TargetName2 ~= "" then targetNames[SilentAimSettings.TargetName2] = true end
         if SilentAimSettings.TargetName3 and SilentAimSettings.TargetName3 ~= "" then targetNames[SilentAimSettings.TargetName3] = true end
 
-        if next(targetNames) then -- 检查表是否为空
+        if next(targetNames) then
             for _, model in ipairs(workspace:GetDescendants()) do
                 if targetNames[model.Name] and isNPC(model) then
                     if not addedNpcs[model] then
@@ -195,7 +193,6 @@ local function updateNPCs()
         end
     end
 
-    -- 添加工作区顶层的常规NPC，以保留原有功能
     for _, v in ipairs(workspace:GetChildren()) do
         if isNPC(v) then
             if not addedNpcs[v] then
@@ -340,7 +337,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "v3.1测试版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.0测试版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
