@@ -34,7 +34,7 @@ local SilentAimSettings = {
     ShowTargetName = false,
     ShowTargetHealth = false,
     ShowTargetDistance = false,
-    TargetMode = "玩家",
+    ShowTargetCategory = false,
     ShowDamageNotifier = false,
     IndependentPanelPosition = "200,200",
     IndependentPanelPinned = false,
@@ -88,7 +88,8 @@ tracer_line.Visible = false; tracer_line.ZIndex = 998; tracer_line.Color = Color
 local overhead_info_texts = {
     Name = Drawing.new("Text"),
     Health = Drawing.new("Text"),
-    Distance = Drawing.new("Text")
+    Distance = Drawing.new("Text"),
+    Category = Drawing.new("Text")
 }
 for _, text in pairs(overhead_info_texts) do
     text.Visible = false; text.ZIndex = 1001; text.Font = Drawing.Fonts.Plex; text.Size = 14; text.Color = Color3.fromRGB(255, 255, 255); text.Center = true; text.Outline = true
@@ -99,7 +100,8 @@ panel_info_bg.Visible = false; panel_info_bg.ZIndex = 1002; panel_info_bg.Color 
 local panel_info_texts = {
     Name = Drawing.new("Text"),
     Health = Drawing.new("Text"),
-    Distance = Drawing.new("Text")
+    Distance = Drawing.new("Text"),
+    Category = Drawing.new("Text")
 }
 for _, text in pairs(panel_info_texts) do
     text.Visible = false; text.ZIndex = 1003; text.Font = Drawing.Fonts.Plex; text.Size = 14; text.Color = Color3.fromRGB(255, 255, 255); text.Center = false; text.Outline = true
@@ -117,7 +119,7 @@ FOVCorner.Name = "FOVCorner"; FOVCorner.CornerRadius = UDim.new(1, 0)
 local IndependentPanelGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 IndependentPanelGui.Name = "IndependentPanelGui"; IndependentPanelGui.ResetOnSpawn = false; IndependentPanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 local IndependentPanelFrame = Instance.new("Frame", IndependentPanelGui)
-IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 80); 
+IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 100); 
 IndependentPanelFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); IndependentPanelFrame.BackgroundTransparency = 0.3; IndependentPanelFrame.BorderSizePixel = 1; IndependentPanelFrame.BorderColor3 = Color3.new(1,1,1)
 IndependentPanelFrame.Visible = false; IndependentPanelFrame.Active = true
 local IPCorner = Instance.new("UICorner", IndependentPanelFrame); IPCorner.CornerRadius = UDim.new(0, 4)
@@ -125,7 +127,7 @@ local IPListLayout = Instance.new("UIListLayout", IndependentPanelFrame)
 IPListLayout.Padding = UDim.new(0, 5); IPListLayout.SortOrder = Enum.SortOrder.LayoutOrder; IPListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; IPListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
 local independent_panel_texts = {}
-for i, name in ipairs({"Name", "Health", "Distance"}) do
+for i, name in ipairs({"Name", "Health", "Distance", "Category"}) do
     local label = Instance.new("TextLabel", IndependentPanelFrame)
     label.Name = name; label.Size = UDim2.new(1, -10, 0, 15); label.BackgroundTransparency = 1
     label.Font = Enum.Font.SourceSans; label.TextSize = 14; label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left; label.LayoutOrder = i
@@ -171,9 +173,32 @@ local function isNPC(obj)
     return obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0 and obj:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(obj)
 end
 
+function getTargetCategory(character)
+    if not character then return "无" end
+
+    if Players:GetPlayerFromCharacter(character) then
+        return "玩家"
+    end
+
+    if SilentAimSettings.EnableNameTargeting then
+        local name = character.Name
+        if (name ~= "" and name == SilentAimSettings.TargetName1) or
+           (name ~= "" and name == SilentAimSettings.TargetName2) or
+           (name ~= "" and name == SilentAimSettings.TargetName3) then
+            return "添加的"
+        end
+    end
+    
+    if character:FindFirstChild("Humanoid") then
+         return "NPC"
+    end
+
+    return "未知"
+end
+
 local function updateNPCs()
     local newNpcList = {}
-    local addedNpcs = {}
+    local addedNpcs = {} 
 
     if SilentAimSettings.EnableNameTargeting then
         local targetNames = {}
@@ -389,14 +414,11 @@ PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min
 local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
 MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
 MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
-MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName })
-Toggles.ShowTargetNameToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
-MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth })
-Toggles.ShowTargetHealthToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
-MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance })
-Toggles.ShowTargetDistanceToggle:OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
-MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier })
-Toggles.DamageNotifierToggle:OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
+MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName }):OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
+MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth }):OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
+MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance }):OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
+MiscGroupBox:AddToggle("ShowTargetCategoryToggle", { Text = "显示目标类别", Default = SilentAimSettings.ShowTargetCategory }):OnChanged(function(Value) SilentAimSettings.ShowTargetCategory = Value end)
+MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier }):OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
 MiscGroupBox:AddButton("重置独立面板位置", function()
     SilentAimSettings.IndependentPanelPosition = "200,200"
     local pos = SilentAimSettings.IndependentPanelPosition:split(",")
@@ -604,7 +626,7 @@ resume(create(function()
                 end
             end
 
-            local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value
+            local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value or Toggles.ShowTargetCategoryToggle.Value
             if showAnyInfo then
                 local targetCharacter = currentTargetPart.Parent
                 local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
@@ -614,6 +636,7 @@ resume(create(function()
                     local targetName = player and player.Name or targetCharacter.Name
                     local health = math.floor(humanoid.Health)
                     local dist = math.floor((localRoot.Position - currentTargetPart.Position).Magnitude)
+                    local category = getTargetCategory(targetCharacter)
                     local infoStyle = SilentAimSettings.TargetInfoStyle
                     
                     if infoStyle == "独立面板" then
@@ -621,15 +644,18 @@ resume(create(function()
                         independent_panel_texts.Name.Visible = Toggles.ShowTargetNameToggle.Value
                         independent_panel_texts.Health.Visible = Toggles.ShowTargetHealthToggle.Value
                         independent_panel_texts.Distance.Visible = Toggles.ShowTargetDistanceToggle.Value
+                        independent_panel_texts.Category.Visible = Toggles.ShowTargetCategoryToggle.Value
                         if Toggles.ShowTargetNameToggle.Value then independent_panel_texts.Name.Text = "目标: " .. targetName end
                         if Toggles.ShowTargetHealthToggle.Value then independent_panel_texts.Health.Text = string.format("血量: %d", health) end
                         if Toggles.ShowTargetDistanceToggle.Value then independent_panel_texts.Distance.Text = string.format("距离: %dm", dist) end
+                        if Toggles.ShowTargetCategoryToggle.Value then independent_panel_texts.Category.Text = "类别: " .. category end
                     elseif infoStyle == "面板" and IsOnScreen then
                         local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
                         local linesDrawn = 0; local lineHeight = 15; local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
                         if Toggles.ShowTargetNameToggle.Value then local textObj = panel_info_texts.Name; textObj.Text = targetName; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetHealthToggle.Value then local textObj = panel_info_texts.Health; textObj.Text = string.format("血量: %d", health); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetDistanceToggle.Value then local textObj = panel_info_texts.Distance; textObj.Text = string.format("距离: %dm", dist); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
+                        if Toggles.ShowTargetCategoryToggle.Value then local textObj = panel_info_texts.Category; textObj.Text = "类别: " .. category; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if linesDrawn > 0 then panel_info_bg.Position = infoPos; panel_info_bg.Size = Vector2.new(120, 10 + (linesDrawn * lineHeight)); panel_info_bg.Visible = true end
                     elseif infoStyle == "头顶" and IsOnScreen then
                         local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
@@ -637,12 +663,13 @@ resume(create(function()
                         if Toggles.ShowTargetNameToggle.Value then local textObj = overhead_info_texts.Name; textObj.Text = string.format("[%s]", targetName); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetHealthToggle.Value then local textObj = overhead_info_texts.Health; textObj.Text = string.format("[%d]", health); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetDistanceToggle.Value then local textObj = overhead_info_texts.Distance; textObj.Text = string.format("[%dm]", dist); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
+                        if Toggles.ShowTargetCategoryToggle.Value then local textObj = overhead_info_texts.Category; textObj.Text = string.format("[%s]", category); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                     end
                 end
             end
         elseif isEnabled and SilentAimSettings.TargetInfoStyle == "独立面板" then
             IndependentPanelFrame.Visible = true
-            independent_panel_texts.Name.Visible = true; independent_panel_texts.Health.Visible = true; independent_panel_texts.Distance.Visible = false
+            independent_panel_texts.Name.Visible = true; independent_panel_texts.Health.Visible = true; independent_panel_texts.Distance.Visible = false; independent_panel_texts.Category.Visible = false
             independent_panel_texts.Name.Text = "状态: 自动索敌中..."; independent_panel_texts.Health.Text = "目标: 无"
         end
 
