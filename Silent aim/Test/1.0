@@ -238,6 +238,20 @@ local function updateNPCs()
     npcList = newNpcList
 end
 
+local function IsObjectVisible(model)
+    if not model then return false end
+    local localCharacter = LocalPlayer.Character
+    if not localCharacter then return false end
+    local targetPart = model:FindFirstChild(SilentAimSettings.TargetPart) or model:FindFirstChild("HumanoidRootPart")
+    if not targetPart then return false end
+    local cameraPosition = Camera.CFrame.Position
+    local direction = targetPart.Position - cameraPosition
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {localCharacter}
+    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 5), raycastParams)
+    return not raycastResult or raycastResult.Instance:IsDescendantOf(model)
+end
 
 local function isPartVisible(part, customOrigin)
     if not part then return false end
@@ -265,7 +279,7 @@ local function getClosestPlayer()
             local Character = Player.Character
             local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
             if Character and Character:FindFirstChild("HumanoidRootPart") and Humanoid and Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not isPartVisible(Character.HumanoidRootPart, LocalPlayerCharacter.Head.Position)) then
+                if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
                     local physicalDist = (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local TargetPartName = SilentAimSettings.TargetPart
@@ -311,7 +325,7 @@ local function getNPCTarget()
         if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) then
             local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
             if NPCModel and NPCModel.PrimaryPart and Humanoid and Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart, LocalPlayerCharacter.Head.Position)) then
+                if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(NPCModel)) then
                     local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local TargetPartName = SilentAimSettings.TargetPart
@@ -372,7 +386,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.0测试版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.0正式版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -391,7 +405,7 @@ MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default 
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
 MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
 MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
-MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 10000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
+MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("视觉效果")
 VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "显示FOV圈", Default = SilentAimSettings.FOVVisible }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV圈颜色" })
