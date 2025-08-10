@@ -181,10 +181,13 @@ function getTargetCategory(character)
     end
 
     if SilentAimSettings.EnableNameTargeting then
-        local name = character.Name
-        if (name ~= "" and name == SilentAimSettings.TargetName1) or
-           (name ~= "" and name == SilentAimSettings.TargetName2) or
-           (name ~= "" and name == SilentAimSettings.TargetName3) then
+        local name = character.Name:lower()
+        local t1 = SilentAimSettings.TargetName1:lower()
+        local t2 = SilentAimSettings.TargetName2:lower()
+        local t3 = SilentAimSettings.TargetName3:lower()
+        if (t1 ~= "" and string.find(name, t1, 1, true)) or
+           (t2 ~= "" and string.find(name, t2, 1, true)) or
+           (t3 ~= "" and string.find(name, t3, 1, true)) then
             return "添加的"
         end
     end
@@ -201,17 +204,22 @@ local function updateNPCs()
     local addedNpcs = {} 
 
     if SilentAimSettings.EnableNameTargeting then
-        local targetNames = {}
-        if SilentAimSettings.TargetName1 and SilentAimSettings.TargetName1 ~= "" then targetNames[SilentAimSettings.TargetName1] = true end
-        if SilentAimSettings.TargetName2 and SilentAimSettings.TargetName2 ~= "" then targetNames[SilentAimSettings.TargetName2] = true end
-        if SilentAimSettings.TargetName3 and SilentAimSettings.TargetName3 ~= "" then targetNames[SilentAimSettings.TargetName3] = true end
+        local targetSubstrings = {}
+        if SilentAimSettings.TargetName1 and SilentAimSettings.TargetName1 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName1:lower()) end
+        if SilentAimSettings.TargetName2 and SilentAimSettings.TargetName2 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName2:lower()) end
+        if SilentAimSettings.TargetName3 and SilentAimSettings.TargetName3 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName3:lower()) end
 
-        if next(targetNames) then
+        if #targetSubstrings > 0 then
             for _, model in ipairs(workspace:GetDescendants()) do
-                if targetNames[model.Name] and isNPC(model) then
-                    if not addedNpcs[model] then
-                        table.insert(newNpcList, model)
-                        addedNpcs[model] = true
+                if isNPC(model) then
+                    for _, substring in ipairs(targetSubstrings) do
+                        if string.find(model.Name:lower(), substring, 1, true) then
+                            if not addedNpcs[model] then
+                                table.insert(newNpcList, model)
+                                addedNpcs[model] = true
+                                break 
+                            end
+                        end
                     end
                 end
             end
@@ -300,20 +308,22 @@ local function getNPCTarget()
     local candidates = {}
 
     for _, NPCModel in ipairs(npcList) do
-        local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
-        if NPCModel and NPCModel.PrimaryPart and Humanoid and Humanoid.Health > 0 then
-            if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart, LocalPlayerCharacter.Head.Position)) then
-                local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
-                if physicalDist <= SilentAimSettings.MaxDistance then
-                    local TargetPartName = SilentAimSettings.TargetPart
-                    local PartToAim = FindFirstChild(NPCModel, TargetPartName) or NPCModel.PrimaryPart
-                    if TargetPartName == "Random" then PartToAim = NPCModel[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                    if PartToAim then
-                        local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
-                        if OnScreen then
-                            local fovDist = (AimPoint - ScreenPosition).Magnitude
-                            if fovDist <= SilentAimSettings.FOVRadius then
-                                table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
+        if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) then
+            local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
+            if NPCModel and NPCModel.PrimaryPart and Humanoid and Humanoid.Health > 0 then
+                if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart, LocalPlayerCharacter.Head.Position)) then
+                    local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
+                    if physicalDist <= SilentAimSettings.MaxDistance then
+                        local TargetPartName = SilentAimSettings.TargetPart
+                        local PartToAim = FindFirstChild(NPCModel, TargetPartName) or NPCModel.PrimaryPart
+                        if TargetPartName == "Random" then PartToAim = NPCModel[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
+                        if PartToAim then
+                            local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
+                            if OnScreen then
+                                local fovDist = (AimPoint - ScreenPosition).Magnitude
+                                if fovDist <= SilentAimSettings.FOVRadius then
+                                    table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
+                                end
                             end
                         end
                     end
@@ -478,13 +488,13 @@ local NameTargetingGroup = Tabs.Misc:AddRightGroupbox("名称索敌")
 NameTargetingGroup:AddToggle("EnableNameTargetingToggle", { Text = "启用名称索敌", Default = SilentAimSettings.EnableNameTargeting }):OnChanged(function(Value)
     SilentAimSettings.EnableNameTargeting = Value
 end)
-NameTargetingGroup:AddInput("TargetName1Input", { Text = "目标名称 1", Default = "", PlaceholderText = "输入NPC名称" }):OnChanged(function(Value)
+NameTargetingGroup:AddInput("TargetName1Input", { Text = "目标名称 1", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
     SilentAimSettings.TargetName1 = Value
 end)
-NameTargetingGroup:AddInput("TargetName2Input", { Text = "目标名称 2", Default = "", PlaceholderText = "输入NPC名称" }):OnChanged(function(Value)
+NameTargetingGroup:AddInput("TargetName2Input", { Text = "目标名称 2", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
     SilentAimSettings.TargetName2 = Value
 end)
-NameTargetingGroup:AddInput("TargetName3Input", { Text = "目标名称 3", Default = "", PlaceholderText = "输入NPC名称" }):OnChanged(function(Value)
+NameTargetingGroup:AddInput("TargetName3Input", { Text = "目标名称 3", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
     SilentAimSettings.TargetName3 = Value
 end)
 
