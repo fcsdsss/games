@@ -1,5 +1,7 @@
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua", true))()
 
+loadstring(game:HttpGet("https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/kickbypass"))()
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
