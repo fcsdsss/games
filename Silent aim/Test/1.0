@@ -1,3 +1,7 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Pixeluted/adoniscries/main/Source.lua", true))()
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/fcsdsss/games/refs/heads/main/kickbypass"))()
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -238,20 +242,6 @@ local function updateNPCs()
     npcList = newNpcList
 end
 
-local function IsObjectVisible(model)
-    if not model then return false end
-    local localCharacter = LocalPlayer.Character
-    if not localCharacter then return false end
-    local targetPart = model:FindFirstChild(SilentAimSettings.TargetPart) or model:FindFirstChild("HumanoidRootPart")
-    if not targetPart then return false end
-    local cameraPosition = Camera.CFrame.Position
-    local direction = targetPart.Position - cameraPosition
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {localCharacter}
-    local raycastResult = workspace:Raycast(cameraPosition, direction.Unit * (direction.Magnitude + 5), raycastParams)
-    return not raycastResult or raycastResult.Instance:IsDescendantOf(model)
-end
 
 local function isPartVisible(part, customOrigin)
     if not part then return false end
@@ -279,7 +269,7 @@ local function getClosestPlayer()
             local Character = Player.Character
             local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
             if Character and Character:FindFirstChild("HumanoidRootPart") and Humanoid and Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(Character)) then
+                if not (SilentAimSettings.VisibleCheck and not isPartVisible(Character.HumanoidRootPart, LocalPlayerCharacter.Head.Position)) then
                     local physicalDist = (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local TargetPartName = SilentAimSettings.TargetPart
@@ -325,7 +315,7 @@ local function getNPCTarget()
         if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) then
             local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
             if NPCModel and NPCModel.PrimaryPart and Humanoid and Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not IsObjectVisible(NPCModel)) then
+                if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart, LocalPlayerCharacter.Head.Position)) then
                     local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local TargetPartName = SilentAimSettings.TargetPart
@@ -386,7 +376,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.0正式版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.0测试版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -510,6 +500,33 @@ NameTargetingGroup:AddInput("TargetName2Input", { Text = "目标名称 2", Defau
 end)
 NameTargetingGroup:AddInput("TargetName3Input", { Text = "目标名称 3", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
     SilentAimSettings.TargetName3 = Value
+end)
+
+local EntertainmentGroup = Tabs.Misc:AddRightGroupbox("恐怖的旋转哈克。")
+local spinThread = nil
+local spinEnabled = false
+local spinSpeed = math.rad(10)
+local function spinCharacter()
+    while spinEnabled and task.wait() do
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, spinSpeed, 0)
+        else
+            break
+        end
+    end
+    spinThread = nil
+end
+EntertainmentGroup:AddToggle("SpinToggle", { Text = "启用旋转", Default = false }):OnChanged(function(value)
+    spinEnabled = value
+    if spinEnabled and not spinThread then
+        spinThread = coroutine.create(spinCharacter)
+        coroutine.resume(spinThread)
+    end
+end)
+EntertainmentGroup:AddSlider("SpinSpeedSlider", { Text = "旋转速度", Default = 10, Min = 1, Max = 100, Rounding = 0 }):OnChanged(function(value)
+    spinSpeed = math.rad(value)
 end)
 
 
