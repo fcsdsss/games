@@ -80,7 +80,8 @@ local currentRotationAngle = 0
 local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
-local lockedTargetCharacter = nil
+
+local lockedTargetObject = nil
 
 local target_indicator_circle = Drawing.new("Circle")
 target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
@@ -450,9 +451,9 @@ ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", {
     Values = {"无"}
 }):OnChanged(function(selectedName)
     if selectedName == "无" then
-        lockedTargetCharacter = nil
+        lockedTargetObject = nil
     else
-        lockedTargetCharacter = targetMap[selectedName]
+        lockedTargetObject = targetMap[selectedName]
     end
 end)
 ManualLockGroupBox:AddButton("刷新列表", function()
@@ -469,7 +470,7 @@ ManualLockGroupBox:AddButton("刷新列表", function()
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                 if not (SilentAimSettings.TeamCheck and player.Team == LocalPlayer.Team) then
                     table.insert(targetNames, player.Name)
-                    targetMap[player.Name] = player.Character
+                    targetMap[player.Name] = player -- 存储 Player 对象
                 end
             end
         end
@@ -485,7 +486,7 @@ ManualLockGroupBox:AddButton("刷新列表", function()
     end
 
     Options.TargetSelectorDropdown:SetValues(targetNames, "无")
-    lockedTargetCharacter = nil
+    lockedTargetObject = nil
 end)
 
 local NameTargetingGroup = Tabs.Misc:AddRightGroupbox("名称索敌")
@@ -500,6 +501,33 @@ NameTargetingGroup:AddInput("TargetName2Input", { Text = "目标名称 2", Defau
 end)
 NameTargetingGroup:AddInput("TargetName3Input", { Text = "目标名称 3", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
     SilentAimSettings.TargetName3 = Value
+end)
+
+local EntertainmentGroup = Tabs.Misc:AddRightGroupbox("娱乐")
+local spinThread = nil
+local spinEnabled = false
+local spinSpeed = math.rad(10)
+local function spinCharacter()
+    while spinEnabled and task.wait() do
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, spinSpeed, 0)
+        else
+            break
+        end
+    end
+    spinThread = nil
+end
+EntertainmentGroup:AddToggle("SpinToggle", { Text = "启用旋转", Default = false }):OnChanged(function(value)
+    spinEnabled = value
+    if spinEnabled and not spinThread then
+        spinThread = coroutine.create(spinCharacter)
+        coroutine.resume(spinThread)
+    end
+end)
+EntertainmentGroup:AddSlider("SpinSpeedSlider", { Text = "旋转速度", Default = 10, Min = 1, Max = 100, Rounding = 0 }):OnChanged(function(value)
+    spinSpeed = math.rad(value)
 end)
 
 
@@ -533,8 +561,12 @@ resume(create(function()
         local currentTargetCharacter = nil
 
         if isEnabled then
-            if lockedTargetCharacter then
-                currentTargetCharacter = lockedTargetCharacter
+            if lockedTargetObject then
+                if lockedTargetObject:IsA("Player") then
+                    currentTargetCharacter = lockedTargetObject.Character
+                elseif lockedTargetObject:IsA("Model") then
+                    currentTargetCharacter = lockedTargetObject
+                end
             else
                 local targetMode = SilentAimSettings.TargetMode
                 local playerTarget, npcTarget
@@ -560,8 +592,9 @@ resume(create(function()
         if currentTargetCharacter then
             local humanoid = currentTargetCharacter:FindFirstChildOfClass("Humanoid")
             if not humanoid or humanoid.Health <= 0 then
-                if lockedTargetCharacter and lockedTargetCharacter == currentTargetCharacter then
-                    lockedTargetCharacter = nil; Options.TargetSelectorDropdown:SetValue("无")
+                if lockedTargetObject and lockedTargetObject:IsA("Model") and lockedTargetObject == currentTargetCharacter then
+                    lockedTargetObject = nil
+                    Options.TargetSelectorDropdown:SetValue("无")
                 end
                 currentTargetCharacter = nil
             else
