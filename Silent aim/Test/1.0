@@ -269,20 +269,18 @@ local function getClosestPlayer()
         if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
             local Character = Player.Character
             local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-            if Character and Character:FindFirstChild("HumanoidRootPart") and Humanoid and Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not isPartVisible(Character.HumanoidRootPart, LocalPlayerCharacter.Head.Position)) then
-                    local physicalDist = (localRoot.Position - Character.HumanoidRootPart.Position).Magnitude
+            if Character and Humanoid and Humanoid.Health > 0 then
+                local partForChecks = Character:FindFirstChild(SilentAimSettings.TargetPart) or Character:FindFirstChild("HumanoidRootPart")
+                if not partForChecks then continue end
+
+                if not (SilentAimSettings.VisibleCheck and not isPartVisible(partForChecks, LocalPlayerCharacter.Head.Position)) then
+                    local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
-                        local TargetPartName = SilentAimSettings.TargetPart
-                        local PartToAim = FindFirstChild(Character, TargetPartName) or Character.HumanoidRootPart
-                        if TargetPartName == "Random" then PartToAim = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                        if PartToAim then
-                            local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
-                            if OnScreen then
-                                local fovDist = (AimPoint - ScreenPosition).Magnitude
-                                if fovDist <= SilentAimSettings.FOVRadius then
-                                    table.insert(candidates, {character = Character, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
-                                end
+                        local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
+                        if OnScreen then
+                            local fovDist = (AimPoint - ScreenPosition).Magnitude
+                            if fovDist <= SilentAimSettings.FOVRadius then
+                                table.insert(candidates, {character = Character, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                             end
                         end
                     end
@@ -315,20 +313,18 @@ local function getNPCTarget()
     for _, NPCModel in ipairs(npcList) do
         if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) then
             local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
-            if NPCModel and NPCModel.PrimaryPart and Humanoid and Humanoid.Health > 0 then
-                if not (SilentAimSettings.VisibleCheck and not isPartVisible(NPCModel.PrimaryPart, LocalPlayerCharacter.Head.Position)) then
-                    local physicalDist = (localRoot.Position - NPCModel.PrimaryPart.Position).Magnitude
+            if NPCModel and Humanoid and Humanoid.Health > 0 then
+                local partForChecks = NPCModel:FindFirstChild(SilentAimSettings.TargetPart) or NPCModel.PrimaryPart or NPCModel:FindFirstChild("HumanoidRootPart")
+                if not partForChecks then continue end
+
+                if not (SilentAimSettings.VisibleCheck and not isPartVisible(partForChecks, LocalPlayerCharacter.Head.Position)) then
+                    local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
-                        local TargetPartName = SilentAimSettings.TargetPart
-                        local PartToAim = FindFirstChild(NPCModel, TargetPartName) or NPCModel.PrimaryPart
-                        if TargetPartName == "Random" then PartToAim = NPCModel[ValidTargetParts[math.random(1, #ValidTargetParts)]] end
-                        if PartToAim then
-                            local ScreenPosition, OnScreen = getPositionOnScreen(PartToAim.Position)
-                            if OnScreen then
-                                local fovDist = (AimPoint - ScreenPosition).Magnitude
-                                if fovDist <= SilentAimSettings.FOVRadius then
-                                    table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
-                                end
+                        local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
+                        if OnScreen then
+                            local fovDist = (AimPoint - ScreenPosition).Magnitude
+                            if fovDist <= SilentAimSettings.FOVRadius then
+                                table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                             end
                         end
                     end
@@ -470,7 +466,7 @@ ManualLockGroupBox:AddButton("刷新列表", function()
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                 if not (SilentAimSettings.TeamCheck and player.Team == LocalPlayer.Team) then
                     table.insert(targetNames, player.Name)
-                    targetMap[player.Name] = player -- 存储 Player 对象
+                    targetMap[player.Name] = player
                 end
             end
         end
@@ -551,6 +547,9 @@ local DAMAGE_INDICATOR_FADE_TIME = 1
 local pos = SilentAimSettings.IndependentPanelPosition:split(",")
 IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
 
+local lastTargetCharacter = nil
+local lockedRandomPart = nil
+
 resume(create(function()
     RenderStepped:Connect(function()
         if SilentAimSettings.IndicatorRotationEnabled then currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2) end
@@ -589,6 +588,11 @@ resume(create(function()
             end
         end
 
+        if currentTargetCharacter ~= lastTargetCharacter then
+            lockedRandomPart = nil 
+        end
+        lastTargetCharacter = currentTargetCharacter
+
         if currentTargetCharacter then
             local humanoid = currentTargetCharacter:FindFirstChildOfClass("Humanoid")
             if not humanoid or humanoid.Health <= 0 then
@@ -597,6 +601,7 @@ resume(create(function()
                     Options.TargetSelectorDropdown:SetValue("无")
                 end
                 currentTargetCharacter = nil
+                currentTargetPart = nil
             else
                 if SilentAimSettings.LeakAndHitMode then
                     for _, part in ipairs(currentTargetCharacter:GetDescendants()) do
@@ -610,7 +615,10 @@ resume(create(function()
                 else
                     local targetPartName = SilentAimSettings.TargetPart
                     if targetPartName == "Random" then
-                        currentTargetPart = currentTargetCharacter[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+                        if not lockedRandomPart or not lockedRandomPart.Parent or lockedRandomPart.Parent ~= currentTargetCharacter then
+                            lockedRandomPart = currentTargetCharacter[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+                        end
+                        currentTargetPart = lockedRandomPart
                     else
                         currentTargetPart = currentTargetCharacter:FindFirstChild(targetPartName) or currentTargetCharacter:FindFirstChild("HumanoidRootPart")
                     end
