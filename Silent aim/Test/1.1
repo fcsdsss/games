@@ -34,14 +34,13 @@ local SilentAimSettings = {
     MaxDistance = 500,
     Tracer_Y_Offset = 0,
     PriorityMode = "准星最近",
-    TargetInfoStyle = "Vape 独立面板",
+    TargetInfoStyle = "面板",
     ShowTargetName = true,
     ShowTargetHealth = true,
     ShowTargetDistance = true,
     ShowTargetCategory = false,
     ShowDamageNotifier = false,
     IndependentPanelPosition = "200,200",
-    VapePanelPosition = "200,350",
     IndependentPanelPinned = false,
     LeakAndHitMode = false,
     Wallbang = false,
@@ -82,7 +81,6 @@ local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
 local avatarCache = {}
-local isDraggingVapePanel = false
 
 local lockedTargetObject = nil
 
@@ -143,94 +141,6 @@ for i, name in ipairs({"Name", "Health", "Distance", "Category"}) do
 end
 IndependentPanelFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then IndependentPanelFrame.Position = UDim2.fromOffset(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) end end)
 IndependentPanelFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset end end)
-
--- ======================================================================
--- 为 Vape 独立面板添加的UI创建代码 (START)
--- ======================================================================
-local VapePanelGui, VapeStylePanelFrame
-local vape_panel_objects = {}
-
-local function createVapeStylePanel()
-    VapePanelGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
-    VapePanelGui.Name = "VapePanelGui"
-    VapePanelGui.ResetOnSpawn = false
-    VapePanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    VapeStylePanelFrame = Instance.new("Frame", VapePanelGui)
-    VapeStylePanelFrame.Name = "VapeStylePanel"
-    VapeStylePanelFrame.Size = UDim2.fromOffset(180, 50)
-    local panelPos = SilentAimSettings.VapePanelPosition:split(",")
-    VapeStylePanelFrame.Position = UDim2.fromOffset(tonumber(panelPos[1]), tonumber(panelPos[2]))
-    VapeStylePanelFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    VapeStylePanelFrame.BackgroundTransparency = 0.5
-    VapeStylePanelFrame.BorderSizePixel = 1
-    VapeStylePanelFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
-    VapeStylePanelFrame.Visible = false
-    VapeStylePanelFrame.Active = true
-    VapeStylePanelFrame.Draggable = true
-    Instance.new("UICorner", VapeStylePanelFrame).CornerRadius = UDim.new(0, 4)
-
-    local playerAvatar = Instance.new("ImageLabel", VapeStylePanelFrame)
-    playerAvatar.Name = "Avatar"
-    playerAvatar.Size = UDim2.fromOffset(40, 40)
-    playerAvatar.Position = UDim2.fromOffset(5, 5)
-    playerAvatar.BackgroundTransparency = 1
-    Instance.new("UICorner", playerAvatar).CornerRadius = UDim.new(1, 0)
-    vape_panel_objects.Avatar = playerAvatar
-
-    local nameLabel = Instance.new("TextLabel", VapeStylePanelFrame)
-    nameLabel.Name = "NameLabel"
-    nameLabel.Size = UDim2.new(1, -55, 0, 20)
-    nameLabel.Position = UDim2.fromOffset(50, 5)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Font = Enum.Font.SourceSansBold
-    nameLabel.TextSize = 14
-    nameLabel.TextColor3 = Color3.new(1, 1, 1)
-    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-    vape_panel_objects.Name = nameLabel
-
-    local healthBarBg = Instance.new("Frame", VapeStylePanelFrame)
-    healthBarBg.Name = "HealthBarBg"
-    healthBarBg.Size = UDim2.new(1, -55, 0, 12)
-    healthBarBg.Position = UDim2.fromOffset(50, 28)
-    healthBarBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
-    healthBarBg.BorderSizePixel = 0
-    Instance.new("UICorner", healthBarBg).CornerRadius = UDim.new(0, 3)
-    vape_panel_objects.HealthBarBg = healthBarBg
-
-    local healthBar = Instance.new("Frame", healthBarBg)
-    healthBar.Name = "HealthBar"
-    healthBar.Size = UDim2.new(1, 0, 1, 0)
-    healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-    healthBar.BorderSizePixel = 0
-    Instance.new("UICorner", healthBar).CornerRadius = UDim.new(0, 3)
-    vape_panel_objects.HealthBar = healthBar
-
-    VapeStylePanelFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingVapePanel = true
-            local startPos = UserInputService:GetMouseLocation()
-            local startFramePos = VapeStylePanelFrame.AbsolutePosition
-            local conn
-            conn = input.Changed:Connect(function()
-                if isDraggingVapePanel then
-                    local currentPos = UserInputService:GetMouseLocation()
-                    VapeStylePanelFrame.Position = UDim2.fromOffset(startFramePos.X + (currentPos.X - startPos.X), startFramePos.Y + (currentPos.Y - startPos.Y))
-                else
-                    conn:Disconnect()
-                end
-            end)
-        end
-    end)
-    
-    VapeStylePanelFrame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingVapePanel = false
-            SilentAimSettings.VapePanelPosition = VapeStylePanelFrame.Position.X.Offset .. "," .. VapeStylePanelFrame.Position.Y.Offset
-        end
-    end)
-end
-createVapeStylePanel()
 
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
@@ -454,7 +364,6 @@ function hideAllVisuals()
     panel_info_bg.Visible = false
     for _, text in pairs(panel_info_texts) do text.Visible = false end
     if IndependentPanelFrame then IndependentPanelFrame.Visible = false end
-    if VapeStylePanelFrame then VapeStylePanelFrame.Visible = false end
 end
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -495,7 +404,7 @@ VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "固定FOV (移动端)", De
 VisualsGroupBox:AddToggle("ShowTargetToggle", { Text = "显示目标", Default = SilentAimSettings.ShowSilentAimTarget }):AddColorPicker("TargetIndicatorColorPicker", { Default = Color3.fromRGB(255,0,0), Title = "指示器颜色" })
 Toggles.ShowTargetToggle:OnChanged(function(Value) SilentAimSettings.ShowSilentAimTarget = Value end)
 Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator_circle.Color = Value; for _, line in ipairs(target_indicator_lines) do line.Color = Value end end)
-VisualsGroupBox:AddDropdown("IndicatorStyleDropdown", { Text = "指示器样式", Values = {"Circle", "Triangle", "Pentagram"}, Default = "Circle" })
+VisualsGroupBox:AddDropdown("IndicatorStyleDropdown", { Text = "指示器样式", Values = {"Circle", "Triangle", "Pentagram", "十字准星"}, Default = "Circle" })
 VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "指示器大小", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
 VisualsGroupBox:AddToggle("IndicatorRotationToggle", { Text = "指示器旋转", Default = SilentAimSettings.IndicatorRotationEnabled })
 Toggles.IndicatorRotationToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRotationEnabled = Value end)
@@ -516,7 +425,7 @@ PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min
 
 local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
 MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
-MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"Vape 独立面板", "面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
+MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
 MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName }):OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
 MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth }):OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
 MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance }):OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
@@ -757,6 +666,7 @@ resume(create(function()
                 if isTargetVisible then finalIndicatorColor = Color3.fromRGB(0, 255, 0); indicatorRadius = indicatorRadius * 0.6
                 elseif SilentAimSettings.IndicatorRainbowEnabled then finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
                 else finalIndicatorColor = Options.TargetIndicatorColorPicker.Value end
+                
                 if indicatorStyle == "Circle" then
                     target_indicator_circle.Visible = true; target_indicator_circle.Color = finalIndicatorColor; target_indicator_circle.Radius = indicatorRadius; target_indicator_circle.Position = RootToViewportPoint
                 elseif indicatorStyle == "Triangle" then
@@ -766,6 +676,22 @@ resume(create(function()
                     local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 5)
                     local pentagram_order = {1, 3, 5, 2, 4}
                     for i = 1, 5 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]] end
+                elseif indicatorStyle == "十字准星" then
+                    local size = indicatorRadius
+                    local gap = size * 0.2
+                    local center = RootToViewportPoint
+                    local linesToDraw = {
+                        {From = center + Vector2.new(0, -size), To = center + Vector2.new(0, -gap)},
+                        {From = center + Vector2.new(0, size),  To = center + Vector2.new(0, gap)},
+                        {From = center + Vector2.new(-size, 0), To = center + Vector2.new(-gap, 0)},
+                        {From = center + Vector2.new(size, 0),  To = center + Vector2.new(gap, 0)}
+                    }
+                    for i = 1, 4 do
+                        target_indicator_lines[i].Visible = true
+                        target_indicator_lines[i].Color = finalIndicatorColor
+                        target_indicator_lines[i].From = linesToDraw[i].From
+                        target_indicator_lines[i].To = linesToDraw[i].To
+                    end
                 end
             end
 
@@ -783,20 +709,7 @@ resume(create(function()
                     local category = getTargetCategory(targetCharacter)
                     local infoStyle = SilentAimSettings.TargetInfoStyle
                     
-                    if infoStyle == "Vape 独立面板" then
-                        VapeStylePanelFrame.Visible = true
-                        local playerTarget = Players:GetPlayerFromCharacter(targetCharacter)
-                        if playerTarget and not avatarCache[playerTarget.UserId] then
-                            local success, content = pcall(function() return Players:GetUserThumbnailAsync(playerTarget.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48) end)
-                            if success then avatarCache[playerTarget.UserId] = content end
-                        end
-                        vape_panel_objects.Avatar.Image = playerTarget and avatarCache[playerTarget.UserId] or ""
-                        vape_panel_objects.Avatar.Visible = playerTarget ~= nil
-                        vape_panel_objects.Name.Text = targetName
-                        local healthPercent = math.clamp(health / maxHealth, 0, 1)
-                        vape_panel_objects.HealthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
-                        vape_panel_objects.HealthBar.BackgroundColor3 = Color3.fromHSV(healthPercent / 3, 0.9, 0.9)
-                    elseif infoStyle == "独立面板" then
+                    if infoStyle == "独立面板" then
                         IndependentPanelFrame.Visible = true
                         independent_panel_texts.Name.Visible = Toggles.ShowTargetNameToggle.Value
                         independent_panel_texts.Health.Visible = Toggles.ShowTargetHealthToggle.Value
@@ -834,11 +747,6 @@ resume(create(function()
                 independent_panel_texts.Category.Visible = false
                 independent_panel_texts.Name.Text = "状态: 自动索敌中..."
                 independent_panel_texts.Health.Text = "目标: 无"
-            elseif infoStyle == "Vape 独立面板" then
-                VapeStylePanelFrame.Visible = true
-                vape_panel_objects.Name.Text = "寻找目标中..."
-                vape_panel_objects.Avatar.Visible = false
-                vape_panel_objects.HealthBar.Size = UDim2.new(0, 0, 1, 0)
             end
         end
 
@@ -951,9 +859,6 @@ Library:OnUnload(function()
     FOVCircleGui:Destroy()
     if IndependentPanelGui then
         IndependentPanelGui:Destroy()
-    end
-    if VapePanelGui then
-        VapePanelGui:Destroy()
     end
     hideAllVisuals()
 end)
