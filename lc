@@ -58,7 +58,7 @@ ControlsGroup:AddSlider("Range", {
 ControlsGroup:AddSlider("Delay", {
 	Text = "攻击延迟",
     Suffix = "毫秒",
-	Default = 2,
+	Default = 200,
 	Min = 50,
 	Max = 1000,
 	Rounding = 0,
@@ -68,7 +68,7 @@ ControlsGroup:AddSlider("MaxTargets", {
     Text = "最大目标数",
     Default = 3,
     Min = 1,
-    Max = 100,
+    Max = 15,
     Rounding = 0,
     Compact = true,
 })
@@ -116,6 +116,7 @@ local function GetTargets()
 
     local RaycastParams = RaycastParams.new()
     RaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    RaycastParams.FilterDescendantsInstances = {LocalCharacter}
 
     for _, Player in ipairs(game:GetService("Players"):GetPlayers()) do
         if Player ~= LocalPlayer and Player.Character then
@@ -127,12 +128,17 @@ local function GetTargets()
                 if not (Toggles.TeamCheck.Value and Player.Team and Player.Team == LocalPlayer.Team) then
                     local Distance = (LocalRoot.Position - RootPart.Position).Magnitude
                     if Distance <= Options.Range.Value then
+                        local IsVisible = true
                         if not Toggles.IgnoreWalls.Value then
-                            RaycastParams.FilterDescendantsInstances = {LocalCharacter, Character}
                             local Result = Workspace:Raycast(LocalRoot.Position, (RootPart.Position - LocalRoot.Position).Unit * Distance, RaycastParams)
-                            if Result then continue end
+                            if Result and Result.Instance and not Result.Instance:IsDescendantOf(Character) then
+                                IsVisible = false
+                            end
                         end
-                        table.insert(PotentialTargets, {Player = Player, Distance = Distance, Health = Humanoid.Health})
+                        
+                        if IsVisible then
+                            table.insert(PotentialTargets, {Player = Player, Distance = Distance, Health = Humanoid.Health})
+                        end
                     end
                 end
             end
