@@ -1,0 +1,232 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+local Window = Library:CreateWindow({
+	Title = "Aura",
+	Footer = "test",
+	ShowCustomCursor = true,
+})
+
+local Tabs = {
+	Main = Window:AddTab("Main", "sword"),
+	["UI Settings"] = Window:AddTab("UI Settings", "settings"),
+}
+
+local ControlsGroup = Tabs.Main:AddLeftGroupbox("Controls")
+
+ControlsGroup:AddToggle("AuraEnabled", {
+	Text = "Enabled",
+	Default = false,
+})
+
+ControlsGroup:AddToggle("TeamCheck", {
+	Text = "Team Check",
+	Default = true,
+})
+
+ControlsGroup:AddToggle("VisualizeRange", {
+    Text = "Visualize Range",
+    Default = false,
+})
+
+ControlsGroup:AddSlider("Range", {
+	Text = "Range",
+	Default = 25,
+	Min = 5,
+	Max = 100,
+	Rounding = 0,
+})
+
+ControlsGroup:AddSlider("Delay", {
+	Text = "Attack Delay",
+    Suffix = "ms",
+	Default = 200,
+	Min = 50,
+	Max = 1000,
+	Rounding = 0,
+})
+
+local TargetGroup = Tabs.Main:AddRightGroupbox("Targeting")
+
+TargetGroup:AddDropdown("TargetMode", {
+    Text = "Target Priority",
+    Values = { "Closest", "Lowest Health" },
+    Default = "Closest",
+    Multi = false,
+})
+
+local function Attack(TargetPlayer)
+    pcall(function()
+        local Event = game:GetService("ReplicatedStorage"):FindFirstChild("ByteNetReliable")
+        local Weapon = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        local TargetRootPart = TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+        if not Event or not Weapon or not TargetRootPart then return end
+
+        Event:FireServer(
+            (function(bytes)
+                local b = buffer.create(#bytes)
+                for i = 1, #bytes do
+                    buffer.writeu8(b, i - 1, bytes[i])
+                end
+                return b
+            end)({ 45, 8, 0, 72, 117, 109, 97, 110, 111, 105, 100, 1, 0, 0, 0, 0, 70, 28, 6, 208, 0, 0, 0, 0, 2, 88, 163, 167, 81, 88, 163, 167, 81, 88, 163, 167, 81 }),
+            {
+                TargetRootPart,
+                Weapon
+            }
+        )
+    end)
+end
+
+local function GetTarget()
+    local PotentialTargets = {}
+    local LocalCharacter = LocalPlayer.Character
+    if not LocalCharacter then return nil end
+
+    local LocalRoot = LocalCharacter:FindFirstChild("HumanoidRootPart")
+    if not LocalRoot then return nil end
+
+    for _, Player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if Player ~= LocalPlayer and Player.Character then
+            local Character = Player.Character
+            local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+            local RootPart = Character:FindFirstChild("HumanoidRootPart")
+
+            if Humanoid and Humanoid.Health > 0 and RootPart then
+                if not (Toggles.TeamCheck.Value and Player.Team and Player.Team == LocalPlayer.Team) then
+                    local Distance = (LocalRoot.Position - RootPart.Position).Magnitude
+                    if Distance <= Options.Range.Value then
+                        table.insert(PotentialTargets, {Player = Player, Character = Character, Distance = Distance, Health = Humanoid.Health})
+                    end
+                end
+            end
+        end
+    end
+
+    if #PotentialTargets == 0 then return nil end
+
+    if Options.TargetMode.Value == "Closest" then
+        table.sort(PotentialTargets, function(a, b)
+            return a.Distance < b.Distance
+        end)
+    elseif Options.TargetMode.Value == "Lowest Health" then
+        table.sort(PotentialTargets, function(a, b)
+            return a.Health < b.Health
+        end)
+    end
+    
+    return PotentialTargets[1].Player
+end
+
+task.spawn(function()
+    while task.wait() do
+        if Library.Unloaded then break end
+        if Toggles.AuraEnabled.Value then
+            local Target = GetTarget()
+            if Target then
+                Attack(Target)
+            end
+            task.wait(Options.Delay.Value / 1000)
+        end
+    end
+end)
+
+local RangeVisualizer = Instance.new("Part")
+RangeVisualizer.Name = "RangeVisualizer"
+RangeVisualizer.Anchored = true
+RangeVisualizer.CanCollide = false
+RangeVisualizer.TopSurface = Enum.SurfaceType.Smooth
+RangeVisualizer.BottomSurface = Enum.SurfaceType.Smooth
+RangeVisualizer.Transparency = 0.6
+RangeVisualizer.Material = Enum.Material.ForceField
+RangeVisualizer.Color = Color3.fromRGB(255, 50, 50)
+local Mesh = Instance.new("CylinderMesh", RangeVisualizer)
+
+local function UpdateVisualizer()
+    if Toggles.VisualizeRange.Value and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        RangeVisualizer.Parent = workspace
+        local Range = Options.Range.Value
+        Mesh.Scale = Vector3.new(Range * 2, 0.1, Range * 2)
+        RangeVisualizer.CFrame = CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position)
+    else
+        RangeVisualizer.Parent = nil
+    end
+end
+
+Toggles.VisualizeRange:OnChanged(UpdateVisualizer)
+Options.Range:OnChanged(UpdateVisualizer)
+game:GetService("RunService").RenderStepped:Connect(function()
+    if Toggles.VisualizeRange.Value and RangeVisualizer.Parent == workspace then
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            RangeVisualizer.CFrame = CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position)
+        else
+            RangeVisualizer.Parent = nil
+        end
+    end
+end)
+
+
+local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
+MenuGroup:AddToggle("KeybindMenuOpen", {
+	Default = Library.KeybindFrame.Visible,
+	Text = "Open Keybind Menu",
+	Callback = function(value)
+		Library.KeybindFrame.Visible = value
+	end,
+})
+MenuGroup:AddToggle("ShowCustomCursor", {
+	Text = "Custom Cursor",
+	Default = true,
+	Callback = function(Value)
+		Library.ShowCustomCursor = Value
+	end,
+})
+MenuGroup:AddDropdown("NotificationSide", {
+	Values = { "Left", "Right" },
+	Default = "Right",
+	Text = "Notification Side",
+	Callback = function(Value)
+		Library:SetNotifySide(Value)
+	end,
+})
+MenuGroup:AddDropdown("DPIDropdown", {
+	Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" },
+	Default = "100%",
+	Text = "DPI Scale",
+	Callback = function(Value)
+		Value = Value:gsub("%%", "")
+		local DPI = tonumber(Value)
+		Library:SetDPIScale(DPI)
+	end,
+})
+MenuGroup:AddDivider()
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
+MenuGroup:AddButton("Unload", function()
+	Library:Unload()
+end)
+
+Library.ToggleKeybind = Options.MenuKeybind
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+ThemeManager:SetFolder("Aura")
+SaveManager:SetFolder("Aura/game")
+SaveManager:BuildConfigSection(Tabs["UI Settings"])
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
+
+Library:OnUnload(function()
+    if RangeVisualizer and RangeVisualizer.Parent then
+        RangeVisualizer:Destroy()
+    end
+end)
+
+SaveManager:LoadAutoloadConfig()
