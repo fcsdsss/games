@@ -12,7 +12,6 @@ local Workspace = game:GetService("Workspace")
 local Window = Library:CreateWindow({
 	Title = "杀戮光环",
 	Footer = "测试版",
-	Icon = 95816097006870,
 	ShowCustomCursor = true,
 })
 
