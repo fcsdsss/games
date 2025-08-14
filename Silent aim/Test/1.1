@@ -42,6 +42,9 @@ local SilentAimSettings = {
     ShowTargetDistance = true,
     ShowTargetCategory = false,
     ShowDamageNotifier = false,
+    HighlightEnabled = false,
+    HighlightRainbowEnabled = false,
+    HighlightColor = Color3.fromRGB(255, 255, 0),
     IndependentPanelPosition = "200,200",
     IndependentPanelPinned = false,
     LeakAndHitMode = false,
@@ -78,6 +81,7 @@ local ValidTargetParts = {"Head", "HumanoidRootPart"}
 local PredictionAmount = 0.165
 
 local currentTargetPart = nil
+local currentHighlight = nil
 local currentRotationAngle = 0
 local currentIndicatorHue = 0
 local npcList = {}
@@ -488,6 +492,12 @@ ManualLockGroupBox:AddButton("刷新列表", function()
     lockedTargetObject = nil
 end)
 
+local HighlightGroupBox = Tabs.Misc:AddRightGroupbox("高亮")
+HighlightGroupBox:AddToggle("HighlightToggle", { Text = "启用高亮", Default = SilentAimSettings.HighlightEnabled }):AddColorPicker("HighlightColorPicker", { Default = SilentAimSettings.HighlightColor, Title = "高亮颜色" })
+Toggles.HighlightToggle:OnChanged(function(Value) SilentAimSettings.HighlightEnabled = Value end)
+Options.HighlightColorPicker:OnChanged(function(Value) SilentAimSettings.HighlightColor = Value end)
+HighlightGroupBox:AddToggle("HighlightRainbowToggle", { Text = "高亮彩虹色", Default = SilentAimSettings.HighlightRainbowEnabled }):OnChanged(function(Value) SilentAimSettings.HighlightRainbowEnabled = Value end)
+
 local NameTargetingGroup = Tabs.Misc:AddRightGroupbox("名称索敌")
 NameTargetingGroup:AddToggle("EnableNameTargetingToggle", { Text = "启用名称索敌", Default = SilentAimSettings.EnableNameTargeting }):OnChanged(function(Value)
     SilentAimSettings.EnableNameTargeting = Value
@@ -556,7 +566,7 @@ local lockedRandomPart = nil
 resume(create(function()
     RenderStepped:Connect(function()
         if SilentAimSettings.IndicatorRotationEnabled then currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2) end
-        if SilentAimSettings.IndicatorRainbowEnabled then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
+        if SilentAimSettings.IndicatorRainbowEnabled or SilentAimSettings.HighlightRainbowEnabled then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
         
         local isEnabled = Toggles.EnabledToggle.Value
         currentTargetPart = nil
@@ -663,6 +673,33 @@ resume(create(function()
 
         hideAllVisuals()
         
+        if currentHighlight and (not currentTargetCharacter or not SilentAimSettings.HighlightEnabled) then
+            currentHighlight:Destroy()
+            currentHighlight = nil
+        end
+
+        if isEnabled and currentTargetCharacter and SilentAimSettings.HighlightEnabled then
+             if not currentHighlight then
+                currentHighlight = Instance.new("Highlight")
+                currentHighlight.Parent = currentTargetCharacter
+            end
+            currentHighlight.Adornee = currentTargetCharacter
+            currentHighlight.Enabled = true
+            currentHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            if SilentAimSettings.HighlightRainbowEnabled then
+                local rainbowColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
+                currentHighlight.FillColor = rainbowColor
+                currentHighlight.OutlineColor = rainbowColor
+                currentHighlight.FillTransparency = 0.5
+                currentHighlight.OutlineTransparency = 0
+            else
+                currentHighlight.FillColor = SilentAimSettings.HighlightColor
+                currentHighlight.OutlineColor = SilentAimSettings.HighlightColor
+                currentHighlight.FillTransparency = 0.5
+                currentHighlight.OutlineTransparency = 0
+            end
+        end
+
         if isEnabled and currentTargetPart then
             local RootToViewportPoint, IsOnScreen = getPositionOnScreen(currentTargetPart.Position)
 
@@ -712,16 +749,12 @@ resume(create(function()
 
             local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value or Toggles.ShowTargetCategoryToggle.Value
             if showAnyInfo then
-                local targetCharacter = currentTargetPart.Parent
-                local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
-                local player = Players:GetPlayerFromCharacter(targetCharacter)
-                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if humanoid and localRoot then
-                    local targetName = player and player.DisplayName or targetCharacter.Name
+                    local targetName = player and player.DisplayName or currentTargetCharacter.Name
                     local health = math.floor(humanoid.Health)
                     local maxHealth = humanoid.MaxHealth
                     local dist = math.floor((localRoot.Position - currentTargetPart.Position).Magnitude)
-                    local category = getTargetCategory(targetCharacter)
+                    local category = getTargetCategory(currentTargetCharacter)
                     local infoStyle = SilentAimSettings.TargetInfoStyle
                     
                     if infoStyle == "独立面板" then
@@ -766,8 +799,7 @@ resume(create(function()
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
-            local targetCharacter = currentTargetPart.Parent
-            local targetHead = targetCharacter and targetCharacter:FindFirstChild("Head")
+            local targetHead = currentTargetCharacter and currentTargetCharacter:FindFirstChild("Head")
             local tracerTargetPosition = (targetHead and targetHead.Position) or currentTargetPart.Position
             local y_offset = SilentAimSettings.Tracer_Y_Offset
             local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
@@ -874,6 +906,9 @@ Library:OnUnload(function()
     FOVCircleGui:Destroy()
     if IndependentPanelGui then
         IndependentPanelGui:Destroy()
+    end
+    if currentHighlight then
+        currentHighlight:Destroy()
     end
     hideAllVisuals()
 end)
