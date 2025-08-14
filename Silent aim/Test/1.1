@@ -252,8 +252,9 @@ local function updateNPCs()
 end
 
 local function isBlacklisted(name)
+    local lowerName = name:lower()
     for _, blacklistedName in ipairs(SilentAimSettings.BlacklistedNames) do
-        if blacklistedName == name then
+        if blacklistedName:lower() == lowerName then
             return true
         end
     end
@@ -391,7 +392,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.1测试版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.0正式版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
