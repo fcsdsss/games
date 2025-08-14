@@ -63,7 +63,7 @@ ControlsGroup:AddSlider("Delay", {
 	Text = "攻击延迟",
     Suffix = "毫秒",
 	Default = 2,
-	Min = 0.1,
+	Min = 0.001,
 	Max = 1000,
 	Rounding = 0,
 })
