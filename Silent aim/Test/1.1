@@ -550,16 +550,34 @@ EntertainmentGroup:AddSlider("SpinSpeedSlider", { Text = "旋转速度", Default
 end)
 
 local BlacklistGroup = Tabs.Misc:AddRightGroupbox("黑名单管理")
+
+-- This hidden option will store the blacklist data for saving and loading
+local blacklistDataOption = BlacklistGroup:AddInput("BlacklistData", {
+    Text = "Blacklist Internal Data",
+    Default = "[]" -- Default to an empty JSON array string
+})
+blacklistDataOption.Visible = false -- Hide this from the user interface
+
+-- This function updates the hidden data option whenever the blacklist is changed
+local function updateBlacklistData()
+    local jsonString = HttpService:JSONEncode(SilentAimSettings.BlacklistedNames)
+    blacklistDataOption:SetValue(jsonString)
+end
+
 BlacklistGroup:AddInput("BlacklistNameInput", { Text = "名称", PlaceholderText = "输入要拉黑的精确名称" })
+
 BlacklistGroup:AddButton("添加到黑名单", function()
     local name = Options.BlacklistNameInput.Value
     if name and name ~= "" and not isBlacklisted(name) then
         table.insert(SilentAimSettings.BlacklistedNames, name)
         Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
         Options.BlacklistNameInput:SetValue("")
+        updateBlacklistData() -- Update the data for saving
     end
 end)
+
 BlacklistGroup:AddDropdown("BlacklistDropdown", { Text = "黑名单列表", Values = SilentAimSettings.BlacklistedNames or {} })
+
 BlacklistGroup:AddButton("从黑名单中删除", function()
     local selectedName = Options.BlacklistDropdown.Value
     if selectedName then
@@ -569,6 +587,17 @@ BlacklistGroup:AddButton("从黑名单中删除", function()
                 break
             end
         end
+        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
+        updateBlacklistData() -- Update the data for saving
+    end
+end)
+
+-- This function runs when a config is loaded, restoring the blacklist
+blacklistDataOption:OnChanged(function(jsonString)
+    if not jsonString or jsonString == "" then jsonString = "[]" end
+    local success, decoded = pcall(HttpService.JSONDecode, HttpService, jsonString)
+    if success and type(decoded) == 'table' then
+        SilentAimSettings.BlacklistedNames = decoded
         Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
     end
 end)
@@ -608,7 +637,7 @@ resume(create(function()
 
         if isEnabled then
             if lockedTargetObject then
-                 if not isBlacklisted(lockedTargetObject.Name) then
+                 if lockedTargetObject.Parent and not isBlacklisted(lockedTargetObject.Name) then
                     if lockedTargetObject:IsA("Player") then
                         currentTargetCharacter = lockedTargetObject.Character
                     elseif lockedTargetObject:IsA("Model") then
