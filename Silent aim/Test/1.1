@@ -551,14 +551,12 @@ end)
 
 local BlacklistGroup = Tabs.Misc:AddRightGroupbox("黑名单管理")
 
--- This hidden option will store the blacklist data for saving and loading
 local blacklistDataOption = BlacklistGroup:AddInput("BlacklistData", {
     Text = "Blacklist Internal Data",
-    Default = "[]" -- Default to an empty JSON array string
+    Default = "[]"
 })
-blacklistDataOption.Visible = false -- Hide this from the user interface
+blacklistDataOption.Visible = false
 
--- This function updates the hidden data option whenever the blacklist is changed
 local function updateBlacklistData()
     local jsonString = HttpService:JSONEncode(SilentAimSettings.BlacklistedNames)
     blacklistDataOption:SetValue(jsonString)
@@ -572,7 +570,7 @@ BlacklistGroup:AddButton("添加到黑名单", function()
         table.insert(SilentAimSettings.BlacklistedNames, name)
         Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
         Options.BlacklistNameInput:SetValue("")
-        updateBlacklistData() -- Update the data for saving
+        updateBlacklistData()
     end
 end)
 
@@ -588,11 +586,10 @@ BlacklistGroup:AddButton("从黑名单中删除", function()
             end
         end
         Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
-        updateBlacklistData() -- Update the data for saving
+        updateBlacklistData()
     end
 end)
 
--- This function runs when a config is loaded, restoring the blacklist
 blacklistDataOption:OnChanged(function(jsonString)
     if not jsonString or jsonString == "" then jsonString = "[]" end
     local success, decoded = pcall(HttpService.JSONDecode, HttpService, jsonString)
@@ -887,6 +884,16 @@ resume(create(function()
     end)
 end))
 
+local oldRaycastParamsNew
+oldRaycastParamsNew = hookfunction(RaycastParams.new, newcclosure(function()
+    local params = oldRaycastParamsNew()
+    if SilentAimSettings.Enabled and SilentAimSettings.Wallbang and not checkcaller() and currentTargetPart then
+        params.FilterType = Enum.RaycastFilterType.Include
+        params.FilterDescendantsInstances = {currentTargetPart.Parent}
+    end
+    return params
+end))
+
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local Method = getnamecallmethod()
@@ -923,15 +930,6 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
             end
         elseif Method == "Raycast" and currentMethod == Method then
             if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                if SilentAimSettings.Wallbang then
-                    local origin = Arguments[2]
-                    local direction = getDirection(origin, currentTargetPart.Position)
-                    local wallbangParams = RaycastParams.new()
-                    wallbangParams.FilterType = Enum.RaycastFilterType.Include
-                    wallbangParams.FilterDescendantsInstances = {currentTargetPart.Parent}
-                    local newArgs = {self, origin, direction, wallbangParams}
-                    return oldNamecall(unpack(newArgs))
-                end
                 Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
                 return oldNamecall(unpack(Arguments))
             end
@@ -985,6 +983,7 @@ Library:OnUnload(function()
     oldNamecall:UnHook()
     oldIndex:UnHook()
     oldRayNew:UnHook()
+    oldRaycastParamsNew:UnHook()
 end)
 
 ThemeManager:SetLibrary(Library)
