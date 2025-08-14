@@ -72,7 +72,7 @@ ControlsGroup:AddSlider("MaxTargets", {
     Text = "最大目标数",
     Default = 3,
     Min = 1,
-    Max = 300,
+    Max = 9e999999,
     Rounding = 0,
     Compact = true,
 })
