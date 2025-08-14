@@ -63,7 +63,7 @@ ControlsGroup:AddSlider("Delay", {
 	Text = "攻击延迟",
     Suffix = "毫秒",
 	Default = 2,
-	Min = 50,
+	Min = 0.1,
 	Max = 1000,
 	Rounding = 0,
 })
@@ -72,7 +72,7 @@ ControlsGroup:AddSlider("MaxTargets", {
     Text = "最大目标数",
     Default = 3,
     Min = 1,
-    Max = 15,
+    Max = 30,
     Rounding = 0,
     Compact = true,
 })
