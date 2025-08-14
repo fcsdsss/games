@@ -34,13 +34,14 @@ local SilentAimSettings = {
     MaxDistance = 500,
     Tracer_Y_Offset = 0,
     PriorityMode = "准星最近",
-    TargetInfoStyle = "Vape 面板",
+    TargetInfoStyle = "Vape 独立面板",
     ShowTargetName = true,
     ShowTargetHealth = true,
     ShowTargetDistance = true,
     ShowTargetCategory = false,
     ShowDamageNotifier = false,
     IndependentPanelPosition = "200,200",
+    VapePanelPosition = "200,350",
     IndependentPanelPinned = false,
     LeakAndHitMode = false,
     Wallbang = false,
@@ -80,15 +81,32 @@ local currentRotationAngle = 0
 local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
+local avatarCache = {}
+local isDraggingVapePanel = false
 
 local lockedTargetObject = nil
 
 local target_indicator_circle = Drawing.new("Circle")
-target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
+target_indicator_circle.Visible = false
+target_indicator_circle.ZIndex = 1000
+target_indicator_circle.Thickness = 2
+target_indicator_circle.Filled = false
+
 local target_indicator_lines = {}
-for i = 1, 5 do local line = Drawing.new("Line"); line.Visible = false; line.ZIndex = 1000; line.Thickness = 2; table.insert(target_indicator_lines, line) end
+for i = 1, 5 do
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.ZIndex = 1000
+    line.Thickness = 2
+    table.insert(target_indicator_lines, line)
+end
+
 local tracer_line = Drawing.new("Line")
-tracer_line.Visible = false; tracer_line.ZIndex = 998; tracer_line.Color = Color3.fromRGB(255, 255, 0); tracer_line.Thickness = 1; tracer_line.Transparency = 1
+tracer_line.Visible = false
+tracer_line.ZIndex = 998
+tracer_line.Color = Color3.fromRGB(255, 255, 0)
+tracer_line.Thickness = 1
+tracer_line.Transparency = 1
 
 local overhead_info_texts = {
     Name = Drawing.new("Text"),
@@ -97,88 +115,250 @@ local overhead_info_texts = {
     Category = Drawing.new("Text")
 }
 for _, text in pairs(overhead_info_texts) do
-    text.Visible = false; text.ZIndex = 1001; text.Font = Drawing.Fonts.Plex; text.Size = 14; text.Color = Color3.fromRGB(255, 255, 255); text.Center = true; text.Outline = true
+    text.Visible = false
+    text.ZIndex = 1001
+    text.Font = Drawing.Fonts.Plex
+    text.Size = 14
+    text.Color = Color3.fromRGB(255, 255, 255)
+    text.Center = true
+    text.Outline = true
 end
 
+local new_panel_esp_objects = {}
+local VapePanelGui, VapeStylePanelFrame
 local vape_panel_objects = {}
-local function createVapePanelObjects()
-    vape_panel_objects.Main = Drawing.new('Square')
-    vape_panel_objects.Main.ZIndex = 998; vape_panel_objects.Main.Filled = false; vape_panel_objects.Main.Thickness = 1; vape_panel_objects.Main.Color = Color3.fromRGB(255, 255, 255)
 
-    vape_panel_objects.Border = Drawing.new('Square')
-    vape_panel_objects.Border.Transparency = 0.35; vape_panel_objects.Border.ZIndex = 997; vape_panel_objects.Border.Thickness = 1; vape_panel_objects.Border.Filled = false; vape_panel_objects.Border.Color = Color3.new()
+local function createNewPanelEspObjects()
+    new_panel_esp_objects.Main = Drawing.new('Square')
+    new_panel_esp_objects.Main.ZIndex = 998
+    new_panel_esp_objects.Main.Filled = false
+    new_panel_esp_objects.Main.Thickness = 1
+    new_panel_esp_objects.Main.Color = Color3.fromRGB(255, 255, 255)
 
-    vape_panel_objects.Border2 = Drawing.new('Square')
-    vape_panel_objects.Border2.Transparency = 0.35; vape_panel_objects.Border2.ZIndex = 997; vape_panel_objects.Border2.Thickness = 1; vape_panel_objects.Border2.Filled = true; vape_panel_objects.Border2.Color = Color3.new()
+    new_panel_esp_objects.Border = Drawing.new('Square')
+    new_panel_esp_objects.Border.Transparency = 0.35
+    new_panel_esp_objects.Border.ZIndex = 997
+    new_panel_esp_objects.Border.Thickness = 1
+    new_panel_esp_objects.Border.Filled = false
+    new_panel_esp_objects.Border.Color = Color3.new()
 
-    vape_panel_objects.HealthLine = Drawing.new('Line')
-    vape_panel_objects.HealthLine.Thickness = 3; vape_panel_objects.HealthLine.ZIndex = 999; vape_panel_objects.HealthLine.Color = Color3.fromRGB(0, 255, 0)
+    new_panel_esp_objects.Border2 = Drawing.new('Square')
+    new_panel_esp_objects.Border2.Transparency = 0.35
+    new_panel_esp_objects.Border2.ZIndex = 997
+    new_panel_esp_objects.Border2.Thickness = 1
+    new_panel_esp_objects.Border2.Filled = true
+    new_panel_esp_objects.Border2.Color = Color3.new()
 
-    vape_panel_objects.HealthBorder = Drawing.new('Line')
-    vape_panel_objects.HealthBorder.Thickness = 5; vape_panel_objects.HealthBorder.Transparency = 0.35; vape_panel_objects.HealthBorder.ZIndex = 998; vape_panel_objects.HealthBorder.Color = Color3.new()
+    new_panel_esp_objects.HealthLine = Drawing.new('Line')
+    new_panel_esp_objects.HealthLine.Thickness = 3
+    new_panel_esp_objects.HealthLine.ZIndex = 999
+    new_panel_esp_objects.HealthLine.Color = Color3.fromRGB(0, 255, 0)
 
-    vape_panel_objects.TextBKG = Drawing.new('Square')
-    vape_panel_objects.TextBKG.Transparency = 0.35; vape_panel_objects.TextBKG.ZIndex = 998; vape_panel_objects.TextBKG.Thickness = 1; vape_panel_objects.TextBKG.Filled = true; vape_panel_objects.TextBKG.Color = Color3.new()
+    new_panel_esp_objects.HealthBorder = Drawing.new('Line')
+    new_panel_esp_objects.HealthBorder.Thickness = 5
+    new_panel_esp_objects.HealthBorder.Transparency = 0.35
+    new_panel_esp_objects.HealthBorder.ZIndex = 998
+    new_panel_esp_objects.HealthBorder.Color = Color3.new()
 
-    vape_panel_objects.Drop = Drawing.new('Text')
-    vape_panel_objects.Drop.Color = Color3.new(); vape_panel_objects.Drop.ZIndex = 999; vape_panel_objects.Drop.Center = true; vape_panel_objects.Drop.Size = 14; vape_panel_objects.Drop.Font = Drawing.Fonts.Plex
+    new_panel_esp_objects.TextBKG = Drawing.new('Square')
+    new_panel_esp_objects.TextBKG.Transparency = 0.35
+    new_panel_esp_objects.TextBKG.ZIndex = 998
+    new_panel_esp_objects.TextBKG.Thickness = 1
+    new_panel_esp_objects.TextBKG.Filled = true
+    new_panel_esp_objects.TextBKG.Color = Color3.new()
 
-    vape_panel_objects.Text = Drawing.new('Text')
-    vape_panel_objects.Text.ZIndex = 1000; vape_panel_objects.Text.Color = Color3.new(1, 1, 1); vape_panel_objects.Text.Center = true; vape_panel_objects.Text.Size = 14; vape_panel_objects.Text.Font = Drawing.Fonts.Plex
+    new_panel_esp_objects.Drop = Drawing.new('Text')
+    new_panel_esp_objects.Drop.Color = Color3.new()
+    new_panel_esp_objects.Drop.ZIndex = 999
+    new_panel_esp_objects.Drop.Center = true
+    new_panel_esp_objects.Drop.Size = 14
+    new_panel_esp_objects.Drop.Font = Drawing.Fonts.Plex
+
+    new_panel_esp_objects.Text = Drawing.new('Text')
+    new_panel_esp_objects.Text.ZIndex = 1000
+    new_panel_esp_objects.Text.Color = Color3.new(1, 1, 1)
+    new_panel_esp_objects.Text.Center = true
+    new_panel_esp_objects.Text.Size = 14
+    new_panel_esp_objects.Text.Font = Drawing.Fonts.Plex
     
-    hideVapePanel()
+    hideNewPanelEsp()
 end
 
-function hideVapePanel()
-    if vape_panel_objects and next(vape_panel_objects) ~= nil then
-        for _, obj in pairs(vape_panel_objects) do
+function hideNewPanelEsp()
+    if new_panel_esp_objects and next(new_panel_esp_objects) ~= nil then
+        for _, obj in pairs(new_panel_esp_objects) do
             obj.Visible = false
         end
     end
 end
-createVapePanelObjects()
+createNewPanelEspObjects()
+
+local function createVapeStylePanel()
+    VapePanelGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+    VapePanelGui.Name = "VapePanelGui"
+    VapePanelGui.ResetOnSpawn = false
+    VapePanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    VapeStylePanelFrame = Instance.new("Frame", VapePanelGui)
+    VapeStylePanelFrame.Name = "VapeStylePanel"
+    VapeStylePanelFrame.Size = UDim2.fromOffset(180, 50)
+    local panelPos = SilentAimSettings.VapePanelPosition:split(",")
+    VapeStylePanelFrame.Position = UDim2.fromOffset(tonumber(panelPos[1]), tonumber(panelPos[2]))
+    VapeStylePanelFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    VapeStylePanelFrame.BackgroundTransparency = 0.5
+    VapeStylePanelFrame.BorderSizePixel = 1
+    VapeStylePanelFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
+    VapeStylePanelFrame.Visible = false
+    VapeStylePanelFrame.Active = true
+    VapeStylePanelFrame.Draggable = true
+    Instance.new("UICorner", VapeStylePanelFrame).CornerRadius = UDim.new(0, 4)
+
+    local playerAvatar = Instance.new("ImageLabel", VapeStylePanelFrame)
+    playerAvatar.Name = "Avatar"
+    playerAvatar.Size = UDim2.fromOffset(40, 40)
+    playerAvatar.Position = UDim2.fromOffset(5, 5)
+    playerAvatar.BackgroundTransparency = 1
+    Instance.new("UICorner", playerAvatar).CornerRadius = UDim.new(1, 0)
+    vape_panel_objects.Avatar = playerAvatar
+
+    local nameLabel = Instance.new("TextLabel", VapeStylePanelFrame)
+    nameLabel.Name = "NameLabel"
+    nameLabel.Size = UDim2.new(1, -55, 0, 20)
+    nameLabel.Position = UDim2.fromOffset(50, 5)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.TextSize = 14
+    nameLabel.TextColor3 = Color3.new(1, 1, 1)
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    vape_panel_objects.Name = nameLabel
+
+    local healthBarBg = Instance.new("Frame", VapeStylePanelFrame)
+    healthBarBg.Name = "HealthBarBg"
+    healthBarBg.Size = UDim2.new(1, -55, 0, 12)
+    healthBarBg.Position = UDim2.fromOffset(50, 28)
+    healthBarBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+    healthBarBg.BorderSizePixel = 0
+    Instance.new("UICorner", healthBarBg).CornerRadius = UDim.new(0, 3)
+    vape_panel_objects.HealthBarBg = healthBarBg
+
+    local healthBar = Instance.new("Frame", healthBarBg)
+    healthBar.Name = "HealthBar"
+    healthBar.Size = UDim2.new(1, 0, 1, 0)
+    healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    healthBar.BorderSizePixel = 0
+    Instance.new("UICorner", healthBar).CornerRadius = UDim.new(0, 3)
+    vape_panel_objects.HealthBar = healthBar
+
+    VapeStylePanelFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingVapePanel = true
+            local startPos = UserInputService:GetMouseLocation()
+            local startFramePos = VapeStylePanelFrame.AbsolutePosition
+            local conn
+            conn = input.Changed:Connect(function()
+                if isDraggingVapePanel then
+                    local currentPos = UserInputService:GetMouseLocation()
+                    VapeStylePanelFrame.Position = UDim2.fromOffset(startFramePos.X + (currentPos.X - startPos.X), startFramePos.Y + (currentPos.Y - startPos.Y))
+                else
+                    conn:Disconnect()
+                end
+            end)
+        end
+    end)
+    
+    VapeStylePanelFrame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDraggingVapePanel = false
+            SilentAimSettings.VapePanelPosition = VapeStylePanelFrame.Position.X.Offset .. "," .. VapeStylePanelFrame.Position.Y.Offset
+        end
+    end)
+end
+createVapeStylePanel()
+
 
 local panel_info_bg = Drawing.new("Square")
-panel_info_bg.Visible = false; panel_info_bg.ZIndex = 1002; panel_info_bg.Color = Color3.fromRGB(0, 0, 0); panel_info_bg.Thickness = 0; panel_info_bg.Filled = true; panel_info_bg.Transparency = 0.5
-local panel_info_texts = {
-    Name = Drawing.new("Text"),
-    Health = Drawing.new("Text"),
-    Distance = Drawing.new("Text"),
-    Category = Drawing.new("Text")
-}
+panel_info_bg.Visible = false
+panel_info_bg.ZIndex = 1002
+panel_info_bg.Color = Color3.fromRGB(0, 0, 0)
+panel_info_bg.Thickness = 0
+panel_info_bg.Filled = true
+panel_info_bg.Transparency = 0.5
+local panel_info_texts = { Name = Drawing.new("Text"), Health = Drawing.new("Text"), Distance = Drawing.new("Text"), Category = Drawing.new("Text") }
 for _, text in pairs(panel_info_texts) do
-    text.Visible = false; text.ZIndex = 1003; text.Font = Drawing.Fonts.Plex; text.Size = 14; text.Color = Color3.fromRGB(255, 255, 255); text.Center = false; text.Outline = true
+    text.Visible = false
+    text.ZIndex = 1003
+    text.Font = Drawing.Fonts.Plex
+    text.Size = 14
+    text.Color = Color3.fromRGB(255, 255, 255)
+    text.Center = false
+    text.Outline = true
 end
 
 
 local FOVCircleGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
-FOVCircleGui.Name = "FOVCircleGui"; FOVCircleGui.ResetOnSpawn = false; FOVCircleGui.IgnoreGuiInset = true; FOVCircleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+FOVCircleGui.Name = "FOVCircleGui"
+FOVCircleGui.ResetOnSpawn = false
+FOVCircleGui.IgnoreGuiInset = true
+FOVCircleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 local FOVCircleFrame = Instance.new("Frame", FOVCircleGui)
-FOVCircleFrame.Name = "FOVCircleFrame"; FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5); FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5); FOVCircleFrame.BackgroundTransparency = 1
+FOVCircleFrame.Name = "FOVCircleFrame"
+FOVCircleFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+FOVCircleFrame.BackgroundTransparency = 1
 local FOVStroke = Instance.new("UIStroke", FOVCircleFrame)
-FOVStroke.Name = "FOVStroke"; FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; FOVStroke.Thickness = 1; FOVStroke.Transparency = 0.5
+FOVStroke.Name = "FOVStroke"
+FOVStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+FOVStroke.Thickness = 1
+FOVStroke.Transparency = 0.5
 local FOVCorner = Instance.new("UICorner", FOVCircleFrame)
-FOVCorner.Name = "FOVCorner"; FOVCorner.CornerRadius = UDim.new(1, 0)
+FOVCorner.Name = "FOVCorner"
+FOVCorner.CornerRadius = UDim.new(1, 0)
 
 local IndependentPanelGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
-IndependentPanelGui.Name = "IndependentPanelGui"; IndependentPanelGui.ResetOnSpawn = false; IndependentPanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+IndependentPanelGui.Name = "IndependentPanelGui"
+IndependentPanelGui.ResetOnSpawn = false
+IndependentPanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 local IndependentPanelFrame = Instance.new("Frame", IndependentPanelGui)
-IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 100); 
-IndependentPanelFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); IndependentPanelFrame.BackgroundTransparency = 0.3; IndependentPanelFrame.BorderSizePixel = 1; IndependentPanelFrame.BorderColor3 = Color3.new(1,1,1)
-IndependentPanelFrame.Visible = false; IndependentPanelFrame.Active = true
-local IPCorner = Instance.new("UICorner", IndependentPanelFrame); IPCorner.CornerRadius = UDim.new(0, 4)
+IndependentPanelFrame.Name = "PanelFrame"
+IndependentPanelFrame.Size = UDim2.fromOffset(160, 100)
+IndependentPanelFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+IndependentPanelFrame.BackgroundTransparency = 0.3
+IndependentPanelFrame.BorderSizePixel = 1
+IndependentPanelFrame.BorderColor3 = Color3.new(1,1,1)
+IndependentPanelFrame.Visible = false
+IndependentPanelFrame.Active = true
+local IPCorner = Instance.new("UICorner", IndependentPanelFrame)
+IPCorner.CornerRadius = UDim.new(0, 4)
 local IPListLayout = Instance.new("UIListLayout", IndependentPanelFrame)
-IPListLayout.Padding = UDim.new(0, 5); IPListLayout.SortOrder = Enum.SortOrder.LayoutOrder; IPListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; IPListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+IPListLayout.Padding = UDim.new(0, 5)
+IPListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+IPListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+IPListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
 local independent_panel_texts = {}
 for i, name in ipairs({"Name", "Health", "Distance", "Category"}) do
     local label = Instance.new("TextLabel", IndependentPanelFrame)
-    label.Name = name; label.Size = UDim2.new(1, -10, 0, 15); label.BackgroundTransparency = 1
-    label.Font = Enum.Font.SourceSans; label.TextSize = 14; label.TextColor3 = Color3.new(1,1,1); label.TextXAlignment = Enum.TextXAlignment.Left; label.LayoutOrder = i
+    label.Name = name
+    label.Size = UDim2.new(1, -10, 0, 15)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.SourceSans
+    label.TextSize = 14
+    label.TextColor3 = Color3.new(1,1,1)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.LayoutOrder = i
     independent_panel_texts[name] = label
 end
-IndependentPanelFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then IndependentPanelFrame.Position = UDim2.fromOffset(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) end end)
-IndependentPanelFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset end end)
+
+IndependentPanelFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then
+        IndependentPanelFrame.Position = UDim2.fromOffset(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
+    end
+end)
+IndependentPanelFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and IndependentPanelFrame.Draggable then
+        SilentAimSettings.IndependentPanelPosition = IndependentPanelFrame.Position.X.Offset .. "," .. IndependentPanelFrame.Position.Y.Offset
+    end
+end)
 
 local ExpectedArguments = {
     FindPartOnRayWithIgnoreList = { ArgCountRequired = 3, Args = {"Instance", "Ray", "table", "boolean", "boolean"} },
@@ -193,8 +373,12 @@ function CalculateChance(Percentage)
 end
 
 do
-    if not isfolder(MainFileName) then makefolder(MainFileName) end
-    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) end
+    if not isfolder(MainFileName) then
+        makefolder(MainFileName)
+    end
+    if not isfolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId))) then
+        makefolder(string.format("%s/%s", MainFileName, tostring(game.PlaceId)))
+    end
 end
 
 local function getPositionOnScreen(Vector)
@@ -204,8 +388,14 @@ end
 
 local function ValidateArguments(Args, RayMethod)
     local Matches = 0
-    if #Args < RayMethod.ArgCountRequired then return false end
-    for Pos, Argument in next, Args do if typeof(Argument) == RayMethod.Args[Pos] then Matches = Matches + 1 end end
+    if #Args < RayMethod.ArgCountRequired then
+        return false
+    end
+    for Pos, Argument in next, Args do
+        if typeof(Argument) == RayMethod.Args[Pos] then
+            Matches = Matches + 1
+        end
+    end
     return Matches >= RayMethod.ArgCountRequired
 end
 
@@ -218,12 +408,12 @@ local function isNPC(obj)
 end
 
 function getTargetCategory(character)
-    if not character then return "无" end
-
+    if not character then
+        return "无"
+    end
     if Players:GetPlayerFromCharacter(character) then
         return "玩家"
     end
-
     if SilentAimSettings.EnableNameTargeting then
         local name = character.Name:lower()
         local t1 = SilentAimSettings.TargetName1:lower()
@@ -235,24 +425,26 @@ function getTargetCategory(character)
             return "添加的"
         end
     end
-    
     if character:FindFirstChild("Humanoid") then
-         return "NPC"
+        return "NPC"
     end
-
     return "未知"
 end
 
 local function updateNPCs()
     local newNpcList = {}
-    local addedNpcs = {} 
-
+    local addedNpcs = {}
     if SilentAimSettings.EnableNameTargeting then
         local targetSubstrings = {}
-        if SilentAimSettings.TargetName1 and SilentAimSettings.TargetName1 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName1:lower()) end
-        if SilentAimSettings.TargetName2 and SilentAimSettings.TargetName2 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName2:lower()) end
-        if SilentAimSettings.TargetName3 and SilentAimSettings.TargetName3 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName3:lower()) end
-
+        if SilentAimSettings.TargetName1 and SilentAimSettings.TargetName1 ~= "" then
+            table.insert(targetSubstrings, SilentAimSettings.TargetName1:lower())
+        end
+        if SilentAimSettings.TargetName2 and SilentAimSettings.TargetName2 ~= "" then
+            table.insert(targetSubstrings, SilentAimSettings.TargetName2:lower())
+        end
+        if SilentAimSettings.TargetName3 and SilentAimSettings.TargetName3 ~= "" then
+            table.insert(targetSubstrings, SilentAimSettings.TargetName3:lower())
+        end
         if #targetSubstrings > 0 then
             for _, model in ipairs(workspace:GetDescendants()) do
                 if isNPC(model) then
@@ -261,7 +453,7 @@ local function updateNPCs()
                             if not addedNpcs[model] then
                                 table.insert(newNpcList, model)
                                 addedNpcs[model] = true
-                                break 
+                                break
                             end
                         end
                     end
@@ -269,7 +461,6 @@ local function updateNPCs()
             end
         end
     end
-
     for _, v in ipairs(workspace:GetChildren()) do
         if isNPC(v) then
             if not addedNpcs[v] then
@@ -278,15 +469,17 @@ local function updateNPCs()
             end
         end
     end
-    
     npcList = newNpcList
 end
 
-
 local function isPartVisible(part, customOrigin)
-    if not part then return false end
+    if not part then
+        return false
+    end
     local localCharacter = LocalPlayer.Character
-    if not localCharacter then return false end
+    if not localCharacter then
+        return false
+    end
     local origin = customOrigin or Camera.CFrame.Position
     local direction = part.Position - origin
     local raycastParams = RaycastParams.new()
@@ -298,20 +491,21 @@ end
 
 local function getClosestPlayer()
     local LocalPlayerCharacter = LocalPlayer.Character
-    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then return nil end
+    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
     local localRoot = LocalPlayerCharacter.HumanoidRootPart
-    
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
     local candidates = {}
-
     for _, Player in ipairs(GetPlayers(Players)) do
         if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
             local Character = Player.Character
             local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
             if Character and Humanoid and Humanoid.Health > 0 then
                 local partForChecks = Character:FindFirstChild(SilentAimSettings.TargetPart) or Character:FindFirstChild("HumanoidRootPart")
-                if not partForChecks then continue end
-
+                if not partForChecks then
+                    continue
+                end
                 if not (SilentAimSettings.VisibleCheck and not isPartVisible(partForChecks, LocalPlayerCharacter.Head.Position)) then
                     local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
@@ -327,8 +521,9 @@ local function getClosestPlayer()
             end
         end
     end
-
-    if #candidates == 0 then return nil end
+    if #candidates == 0 then
+        return nil
+    end
     table.sort(candidates, function(a, b)
         if SilentAimSettings.PriorityMode == "最低血量" then
             return a.health < b.health
@@ -343,19 +538,20 @@ end
 
 local function getNPCTarget()
     local LocalPlayerCharacter = LocalPlayer.Character
-    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then return nil end
+    if not LocalPlayerCharacter or not LocalPlayerCharacter:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
     local localRoot = LocalPlayerCharacter.HumanoidRootPart
-
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
     local candidates = {}
-
     for _, NPCModel in ipairs(npcList) do
         if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) then
             local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
             if NPCModel and Humanoid and Humanoid.Health > 0 then
                 local partForChecks = NPCModel:FindFirstChild(SilentAimSettings.TargetPart) or NPCModel.PrimaryPart or NPCModel:FindFirstChild("HumanoidRootPart")
-                if not partForChecks then continue end
-
+                if not partForChecks then
+                    continue
+                end
                 if not (SilentAimSettings.VisibleCheck and not isPartVisible(partForChecks, LocalPlayerCharacter.Head.Position)) then
                     local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
@@ -371,8 +567,9 @@ local function getNPCTarget()
             end
         end
     end
-
-    if #candidates == 0 then return nil end
+    if #candidates == 0 then
+        return nil
+    end
     table.sort(candidates, function(a, b)
         if SilentAimSettings.PriorityMode == "最低血量" then
             return a.health < b.health
@@ -397,12 +594,23 @@ end
 
 function hideAllVisuals()
     target_indicator_circle.Visible = false
-    for _, line in ipairs(target_indicator_lines) do line.Visible = false end
-    for _, text in pairs(overhead_info_texts) do text.Visible = false end
+    for _, line in ipairs(target_indicator_lines) do
+        line.Visible = false
+    end
+    for _, text in pairs(overhead_info_texts) do
+        text.Visible = false
+    end
     panel_info_bg.Visible = false
-    for _, text in pairs(panel_info_texts) do text.Visible = false end
-    if IndependentPanelFrame then IndependentPanelFrame.Visible = false end
-    hideVapePanel()
+    for _, text in pairs(panel_info_texts) do
+        text.Visible = false
+    end
+    if IndependentPanelFrame then
+        IndependentPanelFrame.Visible = false
+    end
+    hideNewPanelEsp()
+    if VapeStylePanelFrame then
+        VapeStylePanelFrame.Visible = false
+    end
 end
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -423,53 +631,125 @@ local Tabs = {
 
 local MainGroupBox = Tabs.Main:AddLeftGroupbox("主设置", "boxes")
 MainGroupBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSettings.Enabled }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
-Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
-MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
-MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
-MainGroupBox:AddToggle("WallbangToggle", { Text = "穿墙", Default = SilentAimSettings.Wallbang}):OnChanged(function(Value) SilentAimSettings.Wallbang = Value end)
-MainGroupBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value) SilentAimSettings.LeakAndHitMode = Value end)
-MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
-MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
-MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
-MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
-MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
+Toggles.EnabledToggle:OnChanged(function(Value)
+    SilentAimSettings.Enabled = Value
+end)
+MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value)
+    SilentAimSettings.TeamCheck = Value
+end)
+MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value)
+    SilentAimSettings.VisibleCheck = Value
+end)
+MainGroupBox:AddToggle("WallbangToggle", { Text = "穿墙", Default = SilentAimSettings.Wallbang}):OnChanged(function(Value)
+    SilentAimSettings.Wallbang = Value
+end)
+MainGroupBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value)
+    SilentAimSettings.LeakAndHitMode = Value
+end)
+MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value)
+    SilentAimSettings.TargetMode = Value
+end)
+MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value)
+    SilentAimSettings.TargetPart = Value
+end)
+MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value)
+    SilentAimSettings.SilentAimMethod = Value
+end)
+MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value)
+    SilentAimSettings.HitChance = Value
+end)
+MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value)
+    SilentAimSettings.MaxDistance = Value
+end)
 
 local VisualsGroupBox = Tabs.Main:AddRightGroupbox("视觉效果")
 VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "显示FOV圈", Default = SilentAimSettings.FOVVisible }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV圈颜色" })
-Toggles.FOVVisibleToggle:OnChanged(function(Value) FOVCircleGui.Enabled = Value; SilentAimSettings.FOVVisible = Value end)
-Options.FOVColorPicker:OnChanged(function(Value) FOVStroke.Color = Value end)
-VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV圈半径", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 }):OnChanged(function(Value) FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2); SilentAimSettings.FOVRadius = Value end)
-VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "固定FOV (移动端)", Default = SilentAimSettings.FixedFOV }):OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
+Toggles.FOVVisibleToggle:OnChanged(function(Value)
+    FOVCircleGui.Enabled = Value
+    SilentAimSettings.FOVVisible = Value
+end)
+Options.FOVColorPicker:OnChanged(function(Value)
+    FOVStroke.Color = Value
+end)
+VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV圈半径", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 }):OnChanged(function(Value)
+    FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2)
+    SilentAimSettings.FOVRadius = Value
+end)
+VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "固定FOV (移动端)", Default = SilentAimSettings.FixedFOV }):OnChanged(function(Value)
+    SilentAimSettings.FixedFOV = Value
+end)
 VisualsGroupBox:AddToggle("ShowTargetToggle", { Text = "显示目标", Default = SilentAimSettings.ShowSilentAimTarget }):AddColorPicker("TargetIndicatorColorPicker", { Default = Color3.fromRGB(255,0,0), Title = "指示器颜色" })
-Toggles.ShowTargetToggle:OnChanged(function(Value) SilentAimSettings.ShowSilentAimTarget = Value end)
-Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator_circle.Color = Value; for _, line in ipairs(target_indicator_lines) do line.Color = Value end end)
+Toggles.ShowTargetToggle:OnChanged(function(Value)
+    SilentAimSettings.ShowSilentAimTarget = Value
+end)
+Options.TargetIndicatorColorPicker:OnChanged(function(Value)
+    target_indicator_circle.Color = Value
+    for _, line in ipairs(target_indicator_lines) do
+        line.Color = Value
+    end
+end)
 VisualsGroupBox:AddDropdown("IndicatorStyleDropdown", { Text = "指示器样式", Values = {"Circle", "Triangle", "Pentagram"}, Default = "Circle" })
-VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "指示器大小", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
+VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "指示器大小", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0 }):OnChanged(function(Value)
+    SilentAimSettings.TargetIndicatorRadius = Value
+end)
 VisualsGroupBox:AddToggle("IndicatorRotationToggle", { Text = "指示器旋转", Default = SilentAimSettings.IndicatorRotationEnabled })
-Toggles.IndicatorRotationToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRotationEnabled = Value end)
+Toggles.IndicatorRotationToggle:OnChanged(function(Value)
+    SilentAimSettings.IndicatorRotationEnabled = Value
+end)
 VisualsGroupBox:AddSlider("IndicatorRotationSpeedSlider", { Text = "旋转速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRotationSpeed, Rounding = 1, Compact = true })
-Options.IndicatorRotationSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRotationSpeed = Value end)
+Options.IndicatorRotationSpeedSlider:OnChanged(function(Value)
+    SilentAimSettings.IndicatorRotationSpeed = Value
+end)
 VisualsGroupBox:AddToggle("IndicatorRainbowToggle", { Text = "启用彩虹色", Default = SilentAimSettings.IndicatorRainbowEnabled })
-Toggles.IndicatorRainbowToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowEnabled = Value end)
+Toggles.IndicatorRainbowToggle:OnChanged(function(Value)
+    SilentAimSettings.IndicatorRainbowEnabled = Value
+end)
 VisualsGroupBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "颜色变换速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRainbowSpeed, Rounding = 1, Compact = true })
-Options.IndicatorRainbowSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowSpeed = Value end)
+Options.IndicatorRainbowSpeedSlider:OnChanged(function(Value)
+    SilentAimSettings.IndicatorRainbowSpeed = Value
+end)
 VisualsGroupBox:AddToggle("ShowTracerToggle", { Text = "显示目标追踪线", Default = SilentAimSettings.ShowTracer }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "追踪线颜色" })
-Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
-Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
-VisualsGroupBox:AddSlider('TracerYOffsetSlider', { Text = '追踪线Y轴偏移', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
+Toggles.ShowTracerToggle:OnChanged(function(Value)
+    SilentAimSettings.ShowTracer = Value
+end)
+Options.TracerColorPicker:OnChanged(function(Value)
+    tracer_line.Color = Value
+end)
+VisualsGroupBox:AddSlider('TracerYOffsetSlider', { Text = '追踪线Y轴偏移', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value)
+    SilentAimSettings.Tracer_Y_Offset = Value
+end)
 
 local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("预判")
-PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
-PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
+PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value)
+    SilentAimSettings.MouseHitPrediction = Value
+end)
+PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value)
+    SilentAimSettings.MouseHitPredictionAmount = Value
+    PredictionAmount = Value
+end)
 
 local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
-MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
-MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"新面板", "面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
-MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName }):OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
-MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth }):OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
-MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance }):OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
-MiscGroupBox:AddToggle("ShowTargetCategoryToggle", { Text = "显示目标类别", Default = SilentAimSettings.ShowTargetCategory }):OnChanged(function(Value) SilentAimSettings.ShowTargetCategory = Value end)
-MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier }):OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
+MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量"} }):OnChanged(function(Value)
+    SilentAimSettings.PriorityMode = Value
+end)
+MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"Vape 独立面板", "新面板", "面板", "头顶", "独立面板"} }):OnChanged(function(Value)
+    SilentAimSettings.TargetInfoStyle = Value
+end)
+MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName }):OnChanged(function(Value)
+    SilentAimSettings.ShowTargetName = Value
+end)
+MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth }):OnChanged(function(Value)
+    SilentAimSettings.ShowTargetHealth = Value
+end)
+MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance }):OnChanged(function(Value)
+    SilentAimSettings.ShowTargetDistance = Value
+end)
+MiscGroupBox:AddToggle("ShowTargetCategoryToggle", { Text = "显示目标类别", Default = SilentAimSettings.ShowTargetCategory }):OnChanged(function(Value)
+    SilentAimSettings.ShowTargetCategory = Value
+end)
+MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier }):OnChanged(function(Value)
+    SilentAimSettings.ShowDamageNotifier = Value
+end)
 MiscGroupBox:AddButton("重置独立面板位置", function()
     SilentAimSettings.IndependentPanelPosition = "200,200"
     local pos = SilentAimSettings.IndependentPanelPosition:split(",")
@@ -481,11 +761,7 @@ MiscGroupBox:AddToggle("PinPanelToggle", {Text = "固定面板", Default = Silen
 end)
 
 local ManualLockGroupBox = Tabs.Misc:AddLeftGroupbox("锁定")
-ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", {
-    Text = "锁定目标 (无=自动)",
-    Default = "无",
-    Values = {"无"}
-}):OnChanged(function(selectedName)
+ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", { Text = "锁定目标 (无=自动)", Default = "无", Values = {"无"} }):OnChanged(function(selectedName)
     if selectedName == "无" then
         lockedTargetObject = nil
     else
@@ -592,8 +868,12 @@ local lockedRandomPart = nil
 
 resume(create(function()
     RenderStepped:Connect(function()
-        if SilentAimSettings.IndicatorRotationEnabled then currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2) end
-        if SilentAimSettings.IndicatorRainbowEnabled then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
+        if SilentAimSettings.IndicatorRotationEnabled then
+            currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2)
+        end
+        if SilentAimSettings.IndicatorRainbowEnabled then
+            currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1
+        end
         
         local isEnabled = Toggles.EnabledToggle.Value
         currentTargetPart = nil
@@ -609,8 +889,12 @@ resume(create(function()
             else
                 local targetMode = SilentAimSettings.TargetMode
                 local playerTarget, npcTarget
-                if targetMode == "玩家" or targetMode == "所有" then playerTarget = getClosestPlayer() end
-                if targetMode == "NPC" or targetMode == "所有" then npcTarget = getNPCTarget() end
+                if targetMode == "玩家" or targetMode == "所有" then
+                    playerTarget = getClosestPlayer()
+                end
+                if targetMode == "NPC" or targetMode == "所有" then
+                    npcTarget = getNPCTarget()
+                end
 
                 if playerTarget and npcTarget then
                     if SilentAimSettings.PriorityMode == "最低血量" then
@@ -629,7 +913,7 @@ resume(create(function()
         end
 
         if currentTargetCharacter ~= lastTargetCharacter then
-            lockedRandomPart = nil 
+            lockedRandomPart = nil
         end
         lastTargetCharacter = currentTargetCharacter
 
@@ -674,11 +958,16 @@ resume(create(function()
                 if lastHealth and currentHealth < lastHealth then
                     local damage = math.floor(lastHealth - currentHealth)
                     if damage > 0 then
-                        local indicator = {}; indicator.Created = tick(); indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
+                        local indicator = {}
+                        indicator.Created = tick()
+                        indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
                         indicator.TextObject = Drawing.new("Text")
-                        indicator.TextObject.Font = Drawing.Fonts.Monospace; indicator.TextObject.Text = string.format("-%d", damage)
-                        indicator.TextObject.Color = Color3.fromRGB(255, 50, 50); indicator.TextObject.Size = 20
-                        indicator.TextObject.Center = true; indicator.TextObject.Outline = true
+                        indicator.TextObject.Font = Drawing.Fonts.Monospace
+                        indicator.TextObject.Text = string.format("-%d", damage)
+                        indicator.TextObject.Color = Color3.fromRGB(255, 50, 50)
+                        indicator.TextObject.Size = 20
+                        indicator.TextObject.Center = true
+                        indicator.TextObject.Outline = true
                         table.insert(damageIndicators, indicator)
                     end
                 end
@@ -687,13 +976,16 @@ resume(create(function()
         end
 
         for i = #damageIndicators, 1, -1 do
-            local indicator = damageIndicators[i]; local age = tick() - indicator.Created
+            local indicator = damageIndicators[i]
+            local age = tick() - indicator.Created
             if age > DAMAGE_INDICATOR_FADE_TIME then
-                indicator.TextObject:Remove(); table.remove(damageIndicators, i)
+                indicator.TextObject:Remove()
+                table.remove(damageIndicators, i)
             else
                 local progress = age / DAMAGE_INDICATOR_FADE_TIME
                 indicator.TextObject.Position = indicator.Position - Vector2.new(0, progress * 40)
-                indicator.TextObject.Transparency = progress; indicator.TextObject.Visible = true
+                indicator.TextObject.Transparency = progress
+                indicator.TextObject.Visible = true
             end
         end
 
@@ -705,19 +997,40 @@ resume(create(function()
             if IsOnScreen and Toggles.ShowTargetToggle.Value then
                 local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
                 local indicatorStyle = Options.IndicatorStyleDropdown.Value
-                local finalIndicatorColor; local isTargetVisible = isPartVisible(currentTargetPart)
-                if isTargetVisible then finalIndicatorColor = Color3.fromRGB(0, 255, 0); indicatorRadius = indicatorRadius * 0.6
-                elseif SilentAimSettings.IndicatorRainbowEnabled then finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
-                else finalIndicatorColor = Options.TargetIndicatorColorPicker.Value end
+                local finalIndicatorColor
+                local isTargetVisible = isPartVisible(currentTargetPart)
+                if isTargetVisible then
+                    finalIndicatorColor = Color3.fromRGB(0, 255, 0)
+                    indicatorRadius = indicatorRadius * 0.6
+                elseif SilentAimSettings.IndicatorRainbowEnabled then
+                    finalIndicatorColor = Color3.fromHSV(currentIndicatorHue, 1, 1)
+                else
+                    finalIndicatorColor = Options.TargetIndicatorColorPicker.Value
+                end
                 if indicatorStyle == "Circle" then
-                    target_indicator_circle.Visible = true; target_indicator_circle.Color = finalIndicatorColor; target_indicator_circle.Radius = indicatorRadius; target_indicator_circle.Position = RootToViewportPoint
+                    target_indicator_circle.Visible = true
+                    target_indicator_circle.Color = finalIndicatorColor
+                    target_indicator_circle.Radius = indicatorRadius
+                    target_indicator_circle.Position = RootToViewportPoint
                 elseif indicatorStyle == "Triangle" then
                     local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 3)
-                    for i = 1, 3 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[i]; line.To = points[i % 3 + 1] end
+                    for i = 1, 3 do
+                        local line = target_indicator_lines[i]
+                        line.Visible = true
+                        line.Color = finalIndicatorColor
+                        line.From = points[i]
+                        line.To = points[i % 3 + 1]
+                    end
                 elseif indicatorStyle == "Pentagram" then
                     local points = getPolygonPoints(RootToViewportPoint, indicatorRadius, 5)
                     local pentagram_order = {1, 3, 5, 2, 4}
-                    for i = 1, 5 do local line = target_indicator_lines[i]; line.Visible = true; line.Color = finalIndicatorColor; line.From = points[pentagram_order[i]]; line.To = points[pentagram_order[i % 5 + 1]] end
+                    for i = 1, 5 do
+                        local line = target_indicator_lines[i]
+                        line.Visible = true
+                        line.Color = finalIndicatorColor
+                        line.From = points[pentagram_order[i]]
+                        line.To = points[pentagram_order[i % 5 + 1]]
+                    end
                 end
             end
 
@@ -735,31 +1048,52 @@ resume(create(function()
                     local category = getTargetCategory(targetCharacter)
                     local infoStyle = SilentAimSettings.TargetInfoStyle
                     
-                    if infoStyle == "新面板" and IsOnScreen then
+                    if infoStyle == "Vape 独立面板" then
+                        VapeStylePanelFrame.Visible = true
+                        local playerTarget = Players:GetPlayerFromCharacter(targetCharacter)
+                        if playerTarget and not avatarCache[playerTarget.UserId] then
+                            local success, content = pcall(function()
+                                return Players:GetUserThumbnailAsync(playerTarget.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+                            end)
+                            if success then
+                                avatarCache[playerTarget.UserId] = content
+                            end
+                        end
+                        vape_panel_objects.Avatar.Image = playerTarget and avatarCache[playerTarget.UserId] or ""
+                        vape_panel_objects.Avatar.Visible = playerTarget ~= nil
+                        vape_panel_objects.Name.Text = targetName
+                        local healthPercent = math.clamp(health / maxHealth, 0, 1)
+                        vape_panel_objects.HealthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
+                        vape_panel_objects.HealthBar.BackgroundColor3 = Color3.fromHSV(healthPercent / 3, 0.9, 0.9)
+
+                    elseif infoStyle == "新面板" and IsOnScreen then
                         local rootPos, rootVis = getPositionOnScreen(targetCharacter.PrimaryPart.Position)
                         if rootVis then
                             local hipHeight = humanoid.HipHeight or 2
-                            local topPos = getPositionOnScreen((CFrame.lookAlong(targetCharacter.PrimaryPart.Position, Camera.CFrame.LookVector) * CFrame.new(2, hipHeight, 0)).p)
-                            local bottomPos = getPositionOnScreen((CFrame.lookAlong(targetCharacter.PrimaryPart.Position, Camera.CFrame.LookVector) * CFrame.new(-2, -hipHeight - 1, 0)).p)
+                            local topPos, _ = getPositionOnScreen((CFrame.lookAlong(targetCharacter.PrimaryPart.Position, Camera.CFrame.LookVector) * CFrame.new(2, hipHeight, 0)).p)
+                            local bottomPos, _ = getPositionOnScreen((CFrame.lookAlong(targetCharacter.PrimaryPart.Position, Camera.CFrame.LookVector) * CFrame.new(-2, -hipHeight - 1, 0)).p)
                             local sizex, sizey = topPos.X - bottomPos.X, topPos.Y - bottomPos.Y
                             local posx, posy = (rootPos.X - sizex / 2), ((rootPos.Y - sizey / 2))
 
-                            vape_panel_objects.Main.Position = Vector2.new(posx, posy) // 1; vape_panel_objects.Main.Size = Vector2.new(sizex, sizey) // 1
-                            vape_panel_objects.Border.Position = Vector2.new(posx - 1, posy + 1) // 1; vape_panel_objects.Border.Size = Vector2.new(sizex + 2, sizey - 2) // 1
-                            vape_panel_objects.Border2.Position = Vector2.new(posx + 1, posy - 1) // 1; vape_panel_objects.Border2.Size = Vector2.new(sizex - 2, sizey + 2) // 1
+                            new_panel_esp_objects.Main.Position = Vector2.new(posx, posy) // 1
+                            new_panel_esp_objects.Main.Size = Vector2.new(sizex, sizey) // 1
+                            new_panel_esp_objects.Border.Position = Vector2.new(posx - 1, posy + 1) // 1
+                            new_panel_esp_objects.Border.Size = Vector2.new(sizex + 2, sizey - 2) // 1
+                            new_panel_esp_objects.Border2.Position = Vector2.new(posx + 1, posy - 1) // 1
+                            new_panel_esp_objects.Border2.Size = Vector2.new(sizex - 2, sizey + 2) // 1
 
                             if SilentAimSettings.ShowTargetHealth then
                                 local healthPercent = math.clamp(health / maxHealth, 0, 1)
                                 local healthposy = sizey * healthPercent
-                                vape_panel_objects.HealthLine.Visible = health > 0
-                                vape_panel_objects.HealthLine.From = Vector2.new(posx - 4, posy + (sizey - healthposy)) // 1
-                                vape_panel_objects.HealthLine.To = Vector2.new(posx - 4, posy + sizey) // 1
-                                vape_panel_objects.HealthBorder.From = Vector2.new(posx - 4, posy + 1) // 1
-                                vape_panel_objects.HealthBorder.To = Vector2.new(posx - 4, (posy + sizey) - 1) // 1
-                                vape_panel_objects.HealthLine.Color = Color3.fromHSV(healthPercent / 3, 1, 1)
+                                new_panel_esp_objects.HealthLine.Visible = health > 0
+                                new_panel_esp_objects.HealthLine.From = Vector2.new(posx - 4, posy + (sizey - healthposy)) // 1
+                                new_panel_esp_objects.HealthLine.To = Vector2.new(posx - 4, posy + sizey) // 1
+                                new_panel_esp_objects.HealthBorder.From = Vector2.new(posx - 4, posy + 1) // 1
+                                new_panel_esp_objects.HealthBorder.To = Vector2.new(posx - 4, (posy + sizey) - 1) // 1
+                                new_panel_esp_objects.HealthLine.Color = Color3.fromHSV(healthPercent / 3, 1, 1)
                             else
-                                vape_panel_objects.HealthLine.Visible = false
-                                vape_panel_objects.HealthBorder.Visible = false
+                                new_panel_esp_objects.HealthLine.Visible = false
+                                new_panel_esp_objects.HealthBorder.Visible = false
                             end
 
                             local textToShow = {}
@@ -768,19 +1102,21 @@ resume(create(function()
                             
                             if #textToShow > 0 then
                                 local combinedText = table.concat(textToShow, " ")
-                                vape_panel_objects.Text.Text = combinedText
-                                vape_panel_objects.Drop.Text = combinedText
-                                vape_panel_objects.Text.Position = Vector2.new(posx + (sizex / 2), posy + sizey + 5) // 1
-                                vape_panel_objects.Drop.Position = vape_panel_objects.Text.Position + Vector2.new(1, 1)
-                                vape_panel_objects.TextBKG.Size = vape_panel_objects.Text.TextBounds + Vector2.new(8, 4)
-                                vape_panel_objects.TextBKG.Position = vape_panel_objects.Text.Position - Vector2.new((vape_panel_objects.Text.TextBounds.X / 2) + 4, -3)
+                                new_panel_esp_objects.Text.Text = combinedText
+                                new_panel_esp_objects.Drop.Text = combinedText
+                                new_panel_esp_objects.Text.Position = Vector2.new(posx + (sizex / 2), posy + sizey + 5) // 1
+                                new_panel_esp_objects.Drop.Position = new_panel_esp_objects.Text.Position + Vector2.new(1, 1)
+                                new_panel_esp_objects.TextBKG.Size = new_panel_esp_objects.Text.TextBounds + Vector2.new(8, 4)
+                                new_panel_esp_objects.TextBKG.Position = new_panel_esp_objects.Text.Position - Vector2.new((new_panel_esp_objects.Text.TextBounds.X / 2) + 4, -3)
                             else
-                                vape_panel_objects.Text.Visible = false
-                                vape_panel_objects.Drop.Visible = false
-                                vape_panel_objects.TextBKG.Visible = false
+                                new_panel_esp_objects.Text.Visible = false
+                                new_panel_esp_objects.Drop.Visible = false
+                                new_panel_esp_objects.TextBKG.Visible = false
                             end
 
-                            for _, obj in pairs(vape_panel_objects) do obj.Visible = true end
+                            for _, obj in pairs(new_panel_esp_objects) do
+                                obj.Visible = true
+                            end
                         end
                     elseif infoStyle == "独立面板" then
                         IndependentPanelFrame.Visible = true
@@ -794,7 +1130,9 @@ resume(create(function()
                         if Toggles.ShowTargetCategoryToggle.Value then independent_panel_texts.Category.Text = "类别: " .. category end
                     elseif infoStyle == "面板" and IsOnScreen then
                         local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
-                        local linesDrawn = 0; local lineHeight = 15; local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
+                        local linesDrawn = 0
+                        local lineHeight = 15
+                        local infoPos = RootToViewportPoint + Vector2.new(indicatorRadius + 5, -22)
                         if Toggles.ShowTargetNameToggle.Value then local textObj = panel_info_texts.Name; textObj.Text = targetName; textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetHealthToggle.Value then local textObj = panel_info_texts.Health; textObj.Text = string.format("血量: %d", health); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetDistanceToggle.Value then local textObj = panel_info_texts.Distance; textObj.Text = string.format("距离: %dm", dist); textObj.Position = infoPos + Vector2.new(5, 5 + (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
@@ -802,7 +1140,9 @@ resume(create(function()
                         if linesDrawn > 0 then panel_info_bg.Position = infoPos; panel_info_bg.Size = Vector2.new(120, 10 + (linesDrawn * lineHeight)); panel_info_bg.Visible = true end
                     elseif infoStyle == "头顶" and IsOnScreen then
                         local indicatorRadius = SilentAimSettings.TargetIndicatorRadius
-                        local linesDrawn = 0; local lineHeight = 15; local base_y = RootToViewportPoint.Y - indicatorRadius - 10
+                        local linesDrawn = 0
+                        local lineHeight = 15
+                        local base_y = RootToViewportPoint.Y - indicatorRadius - 10
                         if Toggles.ShowTargetNameToggle.Value then local textObj = overhead_info_texts.Name; textObj.Text = string.format("[%s]", targetName); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetHealthToggle.Value then local textObj = overhead_info_texts.Health; textObj.Text = string.format("[%d]", health); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
                         if Toggles.ShowTargetDistanceToggle.Value then local textObj = overhead_info_texts.Distance; textObj.Text = string.format("[%dm]", dist); textObj.Position = Vector2.new(RootToViewportPoint.X, base_y - (linesDrawn * lineHeight)); textObj.Visible = true; linesDrawn = linesDrawn + 1 end
@@ -810,10 +1150,22 @@ resume(create(function()
                     end
                 end
             end
-        elseif isEnabled and SilentAimSettings.TargetInfoStyle == "独立面板" then
-            IndependentPanelFrame.Visible = true
-            independent_panel_texts.Name.Visible = true; independent_panel_texts.Health.Visible = true; independent_panel_texts.Distance.Visible = false; independent_panel_texts.Category.Visible = false
-            independent_panel_texts.Name.Text = "状态: 自动索敌中..."; independent_panel_texts.Health.Text = "目标: 无"
+        elseif isEnabled then
+            local infoStyle = SilentAimSettings.TargetInfoStyle
+            if infoStyle == "独立面板" then
+                IndependentPanelFrame.Visible = true
+                independent_panel_texts.Name.Visible = true
+                independent_panel_texts.Health.Visible = true
+                independent_panel_texts.Distance.Visible = false
+                independent_panel_texts.Category.Visible = false
+                independent_panel_texts.Name.Text = "状态: 自动索敌中..."
+                independent_panel_texts.Health.Text = "目标: 无"
+            elseif infoStyle == "Vape 独立面板" then
+                VapeStylePanelFrame.Visible = true
+                vape_panel_objects.Name.Text = "寻找目标中..."
+                vape_panel_objects.Avatar.Visible = false
+                vape_panel_objects.HealthBar.Size = UDim2.new(0, 0, 1, 0)
+            end
         end
 
         if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
@@ -824,13 +1176,22 @@ resume(create(function()
             local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
             local targetScreenPos, IsOnScreen = getPositionOnScreen(finalTracerPosition)
             tracer_line.Visible = IsOnScreen
-            if IsOnScreen then tracer_line.From = Camera.ViewportSize / 2; tracer_line.To = targetScreenPos; tracer_line.Color = Options.TracerColorPicker.Value end
+            if IsOnScreen then
+                tracer_line.From = Camera.ViewportSize / 2
+                tracer_line.To = targetScreenPos
+                tracer_line.Color = Options.TracerColorPicker.Value
+            end
         else
             tracer_line.Visible = false
         end
         
         if Toggles.FOVVisibleToggle.Value then
-            if Toggles.FixedFOVToggle.Value then FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5) else local mousePos = GetMouseLocation(UserInputService); FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y) end
+            if Toggles.FixedFOVToggle.Value then
+                FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5)
+            else
+                local mousePos = GetMouseLocation(UserInputService)
+                FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
+            end
         end
     end)
 end))
@@ -923,7 +1284,12 @@ end))
 
 Library:OnUnload(function()
     FOVCircleGui:Destroy()
-    if IndependentPanelGui then IndependentPanelGui:Destroy() end
+    if IndependentPanelGui then
+        IndependentPanelGui:Destroy()
+    end
+    if VapePanelGui then
+        VapePanelGui:Destroy()
+    end
     hideAllVisuals()
 end)
 
