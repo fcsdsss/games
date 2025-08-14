@@ -52,7 +52,8 @@ local SilentAimSettings = {
     EnableNameTargeting = false,
     TargetName1 = "",
     TargetName2 = "",
-    TargetName3 = ""
+    TargetName3 = "",
+    BlacklistedNames = {}
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -250,6 +251,14 @@ local function updateNPCs()
     npcList = newNpcList
 end
 
+local function isBlacklisted(name)
+    for _, blacklistedName in ipairs(SilentAimSettings.BlacklistedNames) do
+        if blacklistedName == name then
+            return true
+        end
+    end
+    return false
+end
 
 local function isPartVisible(part, customOrigin)
     if not part then return false end
@@ -274,7 +283,7 @@ local function getClosestPlayer()
     local useFovCheck = SilentAimSettings.PriorityMode ~= "最近的人(无FOV)"
 
     for _, Player in ipairs(GetPlayers(Players)) do
-        if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
+        if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) and not isBlacklisted(Player.Name) then
             local Character = Player.Character
             local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
             if Character and Humanoid and Humanoid.Health > 0 then
@@ -320,7 +329,7 @@ local function getNPCTarget()
     local useFovCheck = SilentAimSettings.PriorityMode ~= "最近的人(无FOV)"
 
     for _, NPCModel in ipairs(npcList) do
-        if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) then
+        if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) and not isBlacklisted(NPCModel.Name) then
             local Humanoid = NPCModel and NPCModel:FindFirstChildOfClass("Humanoid")
             if NPCModel and Humanoid and Humanoid.Health > 0 then
                 local partForChecks = NPCModel:FindFirstChild(SilentAimSettings.TargetPart) or NPCModel.PrimaryPart or NPCModel:FindFirstChild("HumanoidRootPart")
@@ -397,7 +406,7 @@ MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = Sil
 MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
 MainGroupBox:AddToggle("WallbangToggle", { Text = "穿墙", Default = SilentAimSettings.Wallbang}):OnChanged(function(Value) SilentAimSettings.Wallbang = Value end)
 MainGroupBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value) SilentAimSettings.LeakAndHitMode = Value end)
-MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = SilentAimSettings.TargetMode, Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
+MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = "玩家", Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
 MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
 MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
@@ -539,6 +548,30 @@ EntertainmentGroup:AddSlider("SpinSpeedSlider", { Text = "旋转速度", Default
     spinSpeed = math.rad(value)
 end)
 
+local BlacklistGroup = Tabs.Misc:AddRightGroupbox("黑名单管理")
+BlacklistGroup:AddInput("BlacklistNameInput", { Text = "名称", PlaceholderText = "输入要拉黑的精确名称" })
+BlacklistGroup:AddButton("添加到黑名单", function()
+    local name = Options.BlacklistNameInput.Value
+    if name and name ~= "" and not isBlacklisted(name) then
+        table.insert(SilentAimSettings.BlacklistedNames, name)
+        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
+        Options.BlacklistNameInput:SetValue("")
+    end
+end)
+BlacklistGroup:AddDropdown("BlacklistDropdown", { Text = "黑名单列表", Values = SilentAimSettings.BlacklistedNames or {} })
+BlacklistGroup:AddButton("从黑名单中删除", function()
+    local selectedName = Options.BlacklistDropdown.Value
+    if selectedName then
+        for i, name in ipairs(SilentAimSettings.BlacklistedNames) do
+            if name == selectedName then
+                table.remove(SilentAimSettings.BlacklistedNames, i)
+                break
+            end
+        end
+        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
+    end
+end)
+
 
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
 FOVStroke.Color = Options.FOVColorPicker.Value
@@ -574,10 +607,15 @@ resume(create(function()
 
         if isEnabled then
             if lockedTargetObject then
-                if lockedTargetObject:IsA("Player") then
-                    currentTargetCharacter = lockedTargetObject.Character
-                elseif lockedTargetObject:IsA("Model") then
-                    currentTargetCharacter = lockedTargetObject
+                 if not isBlacklisted(lockedTargetObject.Name) then
+                    if lockedTargetObject:IsA("Player") then
+                        currentTargetCharacter = lockedTargetObject.Character
+                    elseif lockedTargetObject:IsA("Model") then
+                        currentTargetCharacter = lockedTargetObject
+                    end
+                else
+                    lockedTargetObject = nil 
+                    Options.TargetSelectorDropdown:SetValue("无")
                 end
             else
                 local targetMode = SilentAimSettings.TargetMode
@@ -749,6 +787,9 @@ resume(create(function()
 
             local showAnyInfo = Toggles.ShowTargetNameToggle.Value or Toggles.ShowTargetHealthToggle.Value or Toggles.ShowTargetDistanceToggle.Value or Toggles.ShowTargetCategoryToggle.Value
             if showAnyInfo then
+                local player = Players:GetPlayerFromCharacter(currentTargetCharacter)
+                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local humanoid = currentTargetCharacter:FindFirstChildOfClass("Humanoid")
                 if humanoid and localRoot then
                     local targetName = player and player.DisplayName or currentTargetCharacter.Name
                     local health = math.floor(humanoid.Health)
@@ -911,6 +952,9 @@ Library:OnUnload(function()
         currentHighlight:Destroy()
     end
     hideAllVisuals()
+    oldNamecall:UnHook()
+    oldIndex:UnHook()
+    oldRayNew:UnHook()
 end)
 
 ThemeManager:SetLibrary(Library)
