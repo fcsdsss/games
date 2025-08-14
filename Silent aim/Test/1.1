@@ -267,6 +267,7 @@ local function getClosestPlayer()
     
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
     local candidates = {}
+    local useFovCheck = SilentAimSettings.PriorityMode ~= "最近的人(无FOV)"
 
     for _, Player in ipairs(GetPlayers(Players)) do
         if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) then
@@ -282,7 +283,7 @@ local function getClosestPlayer()
                         local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
                         if OnScreen then
                             local fovDist = (AimPoint - ScreenPosition).Magnitude
-                            if fovDist <= SilentAimSettings.FOVRadius then
+                            if not useFovCheck or fovDist <= SilentAimSettings.FOVRadius then
                                 table.insert(candidates, {character = Character, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                             end
                         end
@@ -296,7 +297,7 @@ local function getClosestPlayer()
     table.sort(candidates, function(a, b)
         if SilentAimSettings.PriorityMode == "最低血量" then
             return a.health < b.health
-        elseif SilentAimSettings.PriorityMode == "距离最近" then
+        elseif SilentAimSettings.PriorityMode == "距离最近" or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
             return a.dist < b.dist
         else
             return a.fov < b.fov
@@ -312,6 +313,7 @@ local function getNPCTarget()
 
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
     local candidates = {}
+    local useFovCheck = SilentAimSettings.PriorityMode ~= "最近的人(无FOV)"
 
     for _, NPCModel in ipairs(npcList) do
         if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) then
@@ -326,7 +328,7 @@ local function getNPCTarget()
                         local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
                         if OnScreen then
                             local fovDist = (AimPoint - ScreenPosition).Magnitude
-                            if fovDist <= SilentAimSettings.FOVRadius then
+                            if not useFovCheck or fovDist <= SilentAimSettings.FOVRadius then
                                 table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                             end
                         end
@@ -340,7 +342,7 @@ local function getNPCTarget()
     table.sort(candidates, function(a, b)
         if SilentAimSettings.PriorityMode == "最低血量" then
             return a.health < b.health
-        elseif SilentAimSettings.PriorityMode == "距离最近" then
+        elseif SilentAimSettings.PriorityMode == "距离最近" or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
             return a.dist < b.dist
         else
             return a.fov < b.fov
@@ -428,7 +430,7 @@ PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预�
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
 local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
-MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
+MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量", "最近的人(无FOV)"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
 MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
 MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName }):OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
 MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth }):OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
@@ -574,7 +576,8 @@ resume(create(function()
                 if targetMode == "NPC" or targetMode == "所有" then npcTarget = getNPCTarget() end
 
                 if playerTarget and npcTarget then
-                    if SilentAimSettings.PriorityMode == "最低血量" then
+                    local priority = SilentAimSettings.PriorityMode
+                    if priority == "最低血量" then
                         local pHumanoid = playerTarget:FindFirstChildOfClass("Humanoid")
                         local nHumanoid = npcTarget:FindFirstChildOfClass("Humanoid")
                         currentTargetCharacter = (pHumanoid and nHumanoid and pHumanoid.Health <= nHumanoid.Health) and playerTarget or npcTarget
