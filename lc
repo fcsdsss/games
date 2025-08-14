@@ -6,10 +6,12 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 local LocalPlayer = game:GetService("Players").LocalPlayer
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Window = Library:CreateWindow({
 	Title = "Aura",
-	Footer = "test",
+	Footer = "测试版",
 	ShowCustomCursor = true,
 })
 
@@ -30,6 +32,16 @@ ControlsGroup:AddToggle("TeamCheck", {
 	Default = true,
 })
 
+ControlsGroup:AddToggle("IgnoreWalls", {
+    Text = "Ignore Walls",
+    Default = true,
+})
+
+ControlsGroup:AddToggle("MultiAura", {
+    Text = "Multi-Aura",
+    Default = false,
+})
+
 ControlsGroup:AddToggle("VisualizeRange", {
     Text = "Visualize Range",
     Default = false,
@@ -39,7 +51,7 @@ ControlsGroup:AddSlider("Range", {
 	Text = "Range",
 	Default = 25,
 	Min = 5,
-	Max = 100,
+	Max = 2000,
 	Rounding = 0,
 })
 
@@ -50,6 +62,15 @@ ControlsGroup:AddSlider("Delay", {
 	Min = 50,
 	Max = 1000,
 	Rounding = 0,
+})
+
+ControlsGroup:AddSlider("MaxTargets", {
+    Text = "Max Targets",
+    Default = 3,
+    Min = 1,
+    Max = 15,
+    Rounding = 0,
+    Compact = true,
 })
 
 local TargetGroup = Tabs.Main:AddRightGroupbox("Targeting")
@@ -85,13 +106,16 @@ local function Attack(TargetPlayer)
     end)
 end
 
-local function GetTarget()
+local function GetTargets()
     local PotentialTargets = {}
     local LocalCharacter = LocalPlayer.Character
-    if not LocalCharacter then return nil end
+    if not LocalCharacter then return {} end
 
     local LocalRoot = LocalCharacter:FindFirstChild("HumanoidRootPart")
-    if not LocalRoot then return nil end
+    if not LocalRoot then return {} end
+
+    local RaycastParams = RaycastParams.new()
+    RaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
     for _, Player in ipairs(game:GetService("Players"):GetPlayers()) do
         if Player ~= LocalPlayer and Player.Character then
@@ -103,14 +127,19 @@ local function GetTarget()
                 if not (Toggles.TeamCheck.Value and Player.Team and Player.Team == LocalPlayer.Team) then
                     local Distance = (LocalRoot.Position - RootPart.Position).Magnitude
                     if Distance <= Options.Range.Value then
-                        table.insert(PotentialTargets, {Player = Player, Character = Character, Distance = Distance, Health = Humanoid.Health})
+                        if not Toggles.IgnoreWalls.Value then
+                            RaycastParams.FilterDescendantsInstances = {LocalCharacter, Character}
+                            local Result = Workspace:Raycast(LocalRoot.Position, (RootPart.Position - LocalRoot.Position).Unit * Distance, RaycastParams)
+                            if Result then continue end
+                        end
+                        table.insert(PotentialTargets, {Player = Player, Distance = Distance, Health = Humanoid.Health})
                     end
                 end
             end
         end
     end
 
-    if #PotentialTargets == 0 then return nil end
+    if #PotentialTargets == 0 then return {} end
 
     if Options.TargetMode.Value == "Closest" then
         table.sort(PotentialTargets, function(a, b)
@@ -122,16 +151,24 @@ local function GetTarget()
         end)
     end
     
-    return PotentialTargets[1].Player
+    local FinalTargets = {}
+    local Max = Toggles.MultiAura.Value and Options.MaxTargets.Value or 1
+    for i = 1, math.min(Max, #PotentialTargets) do
+        table.insert(FinalTargets, PotentialTargets[i].Player)
+    end
+
+    return FinalTargets
 end
 
 task.spawn(function()
     while task.wait() do
         if Library.Unloaded then break end
         if Toggles.AuraEnabled.Value then
-            local Target = GetTarget()
-            if Target then
-                Attack(Target)
+            local Targets = GetTargets()
+            if #Targets > 0 then
+                for _, Target in ipairs(Targets) do
+                    Attack(Target)
+                end
             end
             task.wait(Options.Delay.Value / 1000)
         end
@@ -151,7 +188,7 @@ local Mesh = Instance.new("CylinderMesh", RangeVisualizer)
 
 local function UpdateVisualizer()
     if Toggles.VisualizeRange.Value and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        RangeVisualizer.Parent = workspace
+        RangeVisualizer.Parent = Workspace
         local Range = Options.Range.Value
         Mesh.Scale = Vector3.new(Range * 2, 0.1, Range * 2)
         RangeVisualizer.CFrame = CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position)
@@ -162,8 +199,8 @@ end
 
 Toggles.VisualizeRange:OnChanged(UpdateVisualizer)
 Options.Range:OnChanged(UpdateVisualizer)
-game:GetService("RunService").RenderStepped:Connect(function()
-    if Toggles.VisualizeRange.Value and RangeVisualizer.Parent == workspace then
+RunService.RenderStepped:Connect(function()
+    if Toggles.VisualizeRange.Value and RangeVisualizer.Parent == Workspace then
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             RangeVisualizer.CFrame = CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position)
         else
@@ -171,7 +208,6 @@ game:GetService("RunService").RenderStepped:Connect(function()
         end
     end
 end)
-
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
 MenuGroup:AddToggle("KeybindMenuOpen", {
