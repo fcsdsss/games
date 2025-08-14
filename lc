@@ -49,7 +49,7 @@ ControlsGroup:AddToggle("VisualizeRange", {
 
 ControlsGroup:AddSlider("Range", {
 	Text = "范围",
-	Default = 30,
+	Default = 25,
 	Min = 5,
 	Max = 2000,
 	Rounding = 0,
@@ -58,7 +58,7 @@ ControlsGroup:AddSlider("Range", {
 ControlsGroup:AddSlider("Delay", {
 	Text = "攻击延迟",
     Suffix = "毫秒",
-	Default = 1,
+	Default = 2,
 	Min = 50,
 	Max = 1000,
 	Rounding = 0,
@@ -77,12 +77,12 @@ local TargetGroup = Tabs.Main:AddRightGroupbox("目标选择")
 
 TargetGroup:AddDropdown("TargetMode", {
     Text = "目标优先级",
-    Values = { "距离最近", "最低血量" },
-    Default = "距离最近",
+    Values = { "最近距离", "最低血量" },
+    Default = "最近距离",
     Multi = false,
 })
 
--ocal function Attack(TargetPlayer)
+local function Attack(TargetPlayer)
     pcall(function()
         local Event = game:GetService("ReplicatedStorage"):FindFirstChild("ByteNetReliable")
         local Weapon = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
@@ -141,7 +141,7 @@ local function GetTargets()
 
     if #PotentialTargets == 0 then return {} end
 
-    if Options.TargetMode.Value == "距离最近" then
+    if Options.TargetMode.Value == "最近距离" then
         table.sort(PotentialTargets, function(a, b)
             return a.Distance < b.Distance
         end)
