@@ -295,8 +295,9 @@ local function getClosestPlayer()
                     local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
-                        if OnScreen then
-                            local fovDist = (AimPoint - ScreenPosition).Magnitude
+                        
+                        if OnScreen or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
+                            local fovDist = OnScreen and (AimPoint - ScreenPosition).Magnitude or math.huge
                             if not useFovCheck or fovDist <= SilentAimSettings.FOVRadius then
                                 table.insert(candidates, {character = Character, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                             end
@@ -340,8 +341,9 @@ local function getNPCTarget()
                     local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
                         local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
-                        if OnScreen then
-                            local fovDist = (AimPoint - ScreenPosition).Magnitude
+                        
+                        if OnScreen or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
+                            local fovDist = OnScreen and (AimPoint - ScreenPosition).Magnitude or math.huge
                             if not useFovCheck or fovDist <= SilentAimSettings.FOVRadius then
                                 table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
                             end
@@ -551,14 +553,12 @@ end)
 
 local BlacklistGroup = Tabs.Misc:AddRightGroupbox("黑名单管理")
 
--- This hidden option will store the blacklist data for saving and loading
 local blacklistDataOption = BlacklistGroup:AddInput("BlacklistData", {
     Text = "Blacklist Internal Data",
-    Default = "[]" -- Default to an empty JSON array string
+    Default = "[]"
 })
-blacklistDataOption.Visible = false -- Hide this from the user interface
+blacklistDataOption.Visible = false
 
--- This function updates the hidden data option whenever the blacklist is changed
 local function updateBlacklistData()
     local jsonString = HttpService:JSONEncode(SilentAimSettings.BlacklistedNames)
     blacklistDataOption:SetValue(jsonString)
@@ -572,7 +572,7 @@ BlacklistGroup:AddButton("添加到黑名单", function()
         table.insert(SilentAimSettings.BlacklistedNames, name)
         Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
         Options.BlacklistNameInput:SetValue("")
-        updateBlacklistData() -- Update the data for saving
+        updateBlacklistData()
     end
 end)
 
@@ -588,11 +588,10 @@ BlacklistGroup:AddButton("从黑名单中删除", function()
             end
         end
         Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
-        updateBlacklistData() -- Update the data for saving
+        updateBlacklistData()
     end
 end)
 
--- This function runs when a config is loaded, restoring the blacklist
 blacklistDataOption:OnChanged(function(jsonString)
     if not jsonString or jsonString == "" then jsonString = "[]" end
     local success, decoded = pcall(HttpService.JSONDecode, HttpService, jsonString)
