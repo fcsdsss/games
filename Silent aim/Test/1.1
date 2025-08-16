@@ -281,7 +281,7 @@ local function getClosestPlayer()
     
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
     local candidates = {}
-    local useFovCheck = SilentAimSettings.PriorityMode ~= "最近的人(无FOV)"
+    local isNoFovMode = SilentAimSettings.PriorityMode == "最近的人(无FOV)"
 
     for _, Player in ipairs(GetPlayers(Players)) do
         if Player ~= LocalPlayer and not (SilentAimSettings.TeamCheck and Player.Team == LocalPlayer.Team) and not isBlacklisted(Player.Name) then
@@ -294,12 +294,15 @@ local function getClosestPlayer()
                 if not (SilentAimSettings.VisibleCheck and not isPartVisible(partForChecks, LocalPlayerCharacter.Head.Position)) then
                     local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
-                        local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
-                        
-                        if OnScreen or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
-                            local fovDist = OnScreen and (AimPoint - ScreenPosition).Magnitude or math.huge
-                            if not useFovCheck or fovDist <= SilentAimSettings.FOVRadius then
-                                table.insert(candidates, {character = Character, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
+                        if isNoFovMode then
+                            table.insert(candidates, {character = Character, fov = math.huge, dist = physicalDist, health = Humanoid.Health})
+                        else
+                            local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
+                            if OnScreen then
+                                local fovDist = (AimPoint - ScreenPosition).Magnitude
+                                if fovDist <= SilentAimSettings.FOVRadius then
+                                    table.insert(candidates, {character = Character, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
+                                end
                             end
                         end
                     end
@@ -312,7 +315,7 @@ local function getClosestPlayer()
     table.sort(candidates, function(a, b)
         if SilentAimSettings.PriorityMode == "最低血量" then
             return a.health < b.health
-        elseif SilentAimSettings.PriorityMode == "距离最近" or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
+        elseif SilentAimSettings.PriorityMode == "距离最近" or isNoFovMode then
             return a.dist < b.dist
         else
             return a.fov < b.fov
@@ -328,7 +331,7 @@ local function getNPCTarget()
 
     local AimPoint = SilentAimSettings.FixedFOV and (Camera.ViewportSize / 2) or GetMouseLocation(UserInputService)
     local candidates = {}
-    local useFovCheck = SilentAimSettings.PriorityMode ~= "最近的人(无FOV)"
+    local isNoFovMode = SilentAimSettings.PriorityMode == "最近的人(无FOV)"
 
     for _, NPCModel in ipairs(npcList) do
         if not (SilentAimSettings.TeamCheck and NPCModel.Team and NPCModel.Team == LocalPlayer.Team) and not isBlacklisted(NPCModel.Name) then
@@ -340,12 +343,15 @@ local function getNPCTarget()
                 if not (SilentAimSettings.VisibleCheck and not isPartVisible(partForChecks, LocalPlayerCharacter.Head.Position)) then
                     local physicalDist = (localRoot.Position - partForChecks.Position).Magnitude
                     if physicalDist <= SilentAimSettings.MaxDistance then
-                        local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
-                        
-                        if OnScreen or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
-                            local fovDist = OnScreen and (AimPoint - ScreenPosition).Magnitude or math.huge
-                            if not useFovCheck or fovDist <= SilentAimSettings.FOVRadius then
-                                table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
+                        if isNoFovMode then
+                            table.insert(candidates, {character = NPCModel, fov = math.huge, dist = physicalDist, health = Humanoid.Health})
+                        else
+                            local ScreenPosition, OnScreen = getPositionOnScreen(partForChecks.Position)
+                            if OnScreen then
+                                local fovDist = (AimPoint - ScreenPosition).Magnitude
+                                if fovDist <= SilentAimSettings.FOVRadius then
+                                    table.insert(candidates, {character = NPCModel, fov = fovDist, dist = physicalDist, health = Humanoid.Health})
+                                end
                             end
                         end
                     end
@@ -358,7 +364,7 @@ local function getNPCTarget()
     table.sort(candidates, function(a, b)
         if SilentAimSettings.PriorityMode == "最低血量" then
             return a.health < b.health
-        elseif SilentAimSettings.PriorityMode == "距离最近" or SilentAimSettings.PriorityMode == "最近的人(无FOV)" then
+        elseif SilentAimSettings.PriorityMode == "距离最近" or isNoFovMode then
             return a.dist < b.dist
         else
             return a.fov < b.fov
