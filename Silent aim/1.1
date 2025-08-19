@@ -50,9 +50,7 @@ local SilentAimSettings = {
     LeakAndHitMode = false,
     Wallbang = false,
     EnableNameTargeting = false,
-    TargetName1 = "",
-    TargetName2 = "",
-    TargetName3 = "",
+    WhitelistedNames = {},
     BlacklistedNames = {}
 }
 
@@ -195,13 +193,10 @@ function getTargetCategory(character)
 
     if SilentAimSettings.EnableNameTargeting then
         local name = character.Name:lower()
-        local t1 = SilentAimSettings.TargetName1:lower()
-        local t2 = SilentAimSettings.TargetName2:lower()
-        local t3 = SilentAimSettings.TargetName3:lower()
-        if (t1 ~= "" and string.find(name, t1, 1, true)) or
-           (t2 ~= "" and string.find(name, t2, 1, true)) or
-           (t3 ~= "" and string.find(name, t3, 1, true)) then
-            return "添加的"
+        for _, whitelistedName in ipairs(SilentAimSettings.WhitelistedNames) do
+            if whitelistedName and whitelistedName ~= "" and string.find(name, whitelistedName:lower(), 1, true) then
+                return "添加的"
+            end
         end
     end
     
@@ -216,22 +211,15 @@ local function updateNPCs()
     local newNpcList = {}
     local addedNpcs = {} 
 
-    if SilentAimSettings.EnableNameTargeting then
-        local targetSubstrings = {}
-        if SilentAimSettings.TargetName1 and SilentAimSettings.TargetName1 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName1:lower()) end
-        if SilentAimSettings.TargetName2 and SilentAimSettings.TargetName2 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName2:lower()) end
-        if SilentAimSettings.TargetName3 and SilentAimSettings.TargetName3 ~= "" then table.insert(targetSubstrings, SilentAimSettings.TargetName3:lower()) end
-
-        if #targetSubstrings > 0 then
-            for _, model in ipairs(workspace:GetDescendants()) do
-                if isNPC(model) then
-                    for _, substring in ipairs(targetSubstrings) do
-                        if string.find(model.Name:lower(), substring, 1, true) then
-                            if not addedNpcs[model] then
-                                table.insert(newNpcList, model)
-                                addedNpcs[model] = true
-                                break 
-                            end
+    if SilentAimSettings.EnableNameTargeting and #SilentAimSettings.WhitelistedNames > 0 then
+        for _, model in ipairs(workspace:GetDescendants()) do
+            if isNPC(model) then
+                for _, substring in ipairs(SilentAimSettings.WhitelistedNames) do
+                    if substring and substring ~= "" and string.find(model.Name:lower(), substring:lower(), 1, true) then
+                        if not addedNpcs[model] then
+                            table.insert(newNpcList, model)
+                            addedNpcs[model] = true
+                            break 
                         end
                     end
                 end
@@ -398,7 +386,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.0正式版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.1正式版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -518,14 +506,50 @@ local NameTargetingGroup = Tabs.Misc:AddRightGroupbox("名称索敌")
 NameTargetingGroup:AddToggle("EnableNameTargetingToggle", { Text = "启用名称索敌", Default = SilentAimSettings.EnableNameTargeting }):OnChanged(function(Value)
     SilentAimSettings.EnableNameTargeting = Value
 end)
-NameTargetingGroup:AddInput("TargetName1Input", { Text = "目标名称 1", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
-    SilentAimSettings.TargetName1 = Value
+
+local whitelistDataOption = NameTargetingGroup:AddInput("WhitelistData", {
+    Text = "Whitelist Internal Data",
+    Default = "[]" 
+})
+whitelistDataOption.Visible = false 
+local function updateWhitelistData()
+    local jsonString = HttpService:JSONEncode(SilentAimSettings.WhitelistedNames)
+    whitelistDataOption:SetValue(jsonString)
+end
+
+NameTargetingGroup:AddInput("WhitelistNameInput", { Text = "名称", PlaceholderText = "输入要锁定的NPC名称关键字" })
+NameTargetingGroup:AddButton("添加到列表", function()
+    local name = Options.WhitelistNameInput.Value
+    if name and name ~= "" then
+        table.insert(SilentAimSettings.WhitelistedNames, name)
+        Options.WhitelistDropdown:SetValues(SilentAimSettings.WhitelistedNames)
+        Options.WhitelistNameInput:SetValue("")
+        updateWhitelistData() 
+    end
 end)
-NameTargetingGroup:AddInput("TargetName2Input", { Text = "目标名称 2", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
-    SilentAimSettings.TargetName2 = Value
+
+NameTargetingGroup:AddDropdown("WhitelistDropdown", { Text = "名称列表", Values = SilentAimSettings.WhitelistedNames or {} })
+NameTargetingGroup:AddButton("从列表中删除", function()
+    local selectedName = Options.WhitelistDropdown.Value
+    if selectedName then
+        for i, name in ipairs(SilentAimSettings.WhitelistedNames) do
+            if name == selectedName then
+                table.remove(SilentAimSettings.WhitelistedNames, i)
+                break
+            end
+        end
+        Options.WhitelistDropdown:SetValues(SilentAimSettings.WhitelistedNames)
+        updateWhitelistData() 
+    end
 end)
-NameTargetingGroup:AddInput("TargetName3Input", { Text = "目标名称 3", Default = "", PlaceholderText = "输入NPC名称关键字" }):OnChanged(function(Value)
-    SilentAimSettings.TargetName3 = Value
+
+whitelistDataOption:OnChanged(function(jsonString)
+    if not jsonString or jsonString == "" then jsonString = "[]" end
+    local success, decoded = pcall(HttpService.JSONDecode, HttpService, jsonString)
+    if success and type(decoded) == 'table' then
+        SilentAimSettings.WhitelistedNames = decoded
+        Options.WhitelistDropdown:SetValues(SilentAimSettings.WhitelistedNames)
+    end
 end)
 
 local EntertainmentGroup = Tabs.Misc:AddRightGroupbox("娱乐")
@@ -556,7 +580,6 @@ EntertainmentGroup:AddSlider("SpinSpeedSlider", { Text = "旋转速度", Default
 end)
 
 local BlacklistGroup = Tabs.Misc:AddRightGroupbox("黑名单管理")
-
 local blacklistDataOption = BlacklistGroup:AddInput("BlacklistData", {
     Text = "Blacklist Internal Data",
     Default = "[]" 
@@ -568,7 +591,6 @@ local function updateBlacklistData()
 end
 
 BlacklistGroup:AddInput("BlacklistNameInput", { Text = "名称", PlaceholderText = "输入要拉黑的精确名称" })
-
 BlacklistGroup:AddButton("添加到黑名单", function()
     local name = Options.BlacklistNameInput.Value
     if name and name ~= "" and not isBlacklisted(name) then
@@ -580,7 +602,6 @@ BlacklistGroup:AddButton("添加到黑名单", function()
 end)
 
 BlacklistGroup:AddDropdown("BlacklistDropdown", { Text = "黑名单列表", Values = SilentAimSettings.BlacklistedNames or {} })
-
 BlacklistGroup:AddButton("从黑名单中删除", function()
     local selectedName = Options.BlacklistDropdown.Value
     if selectedName then
