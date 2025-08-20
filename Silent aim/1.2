@@ -87,6 +87,7 @@ local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
 local avatarCache = {}
+local lastShotOrigin = nil
 
 local lockedTargetObject = nil
 
@@ -553,7 +554,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.1正式版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.2 优化版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -597,7 +598,7 @@ VisualsGroupBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "颜色变换�
 Options.IndicatorRainbowSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowSpeed = Value end)
 
 local TracerGroupBox = Tabs.Main:AddRightGroupbox("子弹轨迹")
-TracerGroupBox:AddToggle("TracerEnabled", { Text = "启用轨迹 (按住左键)", Default = false }):AddColorPicker("TracerColor", { Default = Color3.fromRGB(123, 123, 251), Title = "轨迹颜色" })
+TracerGroupBox:AddToggle("TracerEnabled", { Text = "启用轨迹 (造成伤害时)", Default = false }):AddColorPicker("TracerColor", { Default = Color3.fromRGB(123, 123, 251), Title = "轨迹颜色" })
 TracerGroupBox:AddToggle("TracerRainbowColor", { Text = "轨迹线变色", Default = false })
 TracerGroupBox:AddDropdown("TracerMode", { Text = "轨迹模式", Values = {"Beam", "Particle"}, Default = "Beam" })
 TracerGroupBox:AddDropdown("TracerTexture", { Text = "轨迹样式", Default = "Pulse", Values = {"Default", "Electric", "Pulse"} })
@@ -892,7 +893,6 @@ end)
 
 local lastHealthValues = {}
 local damageIndicators = {}
-local DAMAGE_INDICATOR_FADE_TIME = 1
 
 local pos = SilentAimSettings.IndependentPanelPosition:split(",")
 IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
@@ -982,7 +982,7 @@ resume(create(function()
             end
         end
 
-        if isEnabled and currentTargetPart and (SilentAimSettings.ShowDamageNotifier or Options.HitSound.Value ~= '关闭') then
+        if isEnabled and currentTargetPart and (SilentAimSettings.ShowDamageNotifier or Options.HitSound.Value ~= '关闭' or Toggles.TracerEnabled.Value) then
             local humanoid = currentTargetPart.Parent:FindFirstChildOfClass("Humanoid")
             if humanoid then
                 local currentHealth = humanoid.Health
@@ -991,11 +991,17 @@ resume(create(function()
                     local damage = math.floor(lastHealth - currentHealth)
                     if damage > 0 then
                         if SilentAimSettings.ShowDamageNotifier then
-                            local indicator = {}; indicator.Created = tick(); indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
+                            local indicator = {}
+                            indicator.Created = tick()
+                            indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
                             indicator.TextObject = Drawing.new("Text")
-                            indicator.TextObject.Font = Drawing.Fonts.Monospace; indicator.TextObject.Text = string.format("-%d", damage)
-                            indicator.TextObject.Color = Color3.fromRGB(255, 50, 50); indicator.TextObject.Size = 20
-                            indicator.TextObject.Center = true; indicator.TextObject.Outline = true
+                            indicator.TextObject.Font = Drawing.Fonts.Plex
+                            indicator.TextObject.Text = string.format("-%d", damage)
+                            indicator.TextObject.Color = Color3.fromRGB(255, 70, 70)
+                            indicator.TextObject.Size = 24
+                            indicator.TextObject.Center = true
+                            indicator.TextObject.Outline = true
+                            indicator.TextObject.OutlineColor = Color3.new(0,0,0)
                             table.insert(damageIndicators, indicator)
                         end
                         
@@ -1006,6 +1012,11 @@ resume(create(function()
                                 playHitSound(soundId)
                             end
                         end
+
+                        if Toggles.TracerEnabled.Value and lastShotOrigin then
+                            CreateTracer(currentTargetPart.Position, lastShotOrigin)
+                            lastShotOrigin = nil 
+                        end
                     end
                 end
                 lastHealthValues[humanoid] = currentHealth
@@ -1013,13 +1024,26 @@ resume(create(function()
         end
 
         for i = #damageIndicators, 1, -1 do
-            local indicator = damageIndicators[i]; local age = tick() - indicator.Created
-            if age > DAMAGE_INDICATOR_FADE_TIME then
-                indicator.TextObject:Remove(); table.remove(damageIndicators, i)
+            local indicator = damageIndicators[i]
+            local FADE_TIME = 0.8
+            local POP_DURATION = 0.15
+            local age = tick() - indicator.Created
+
+            if age > FADE_TIME then
+                indicator.TextObject:Remove()
+                table.remove(damageIndicators, i)
             else
-                local progress = age / DAMAGE_INDICATOR_FADE_TIME
-                indicator.TextObject.Position = indicator.Position - Vector2.new(0, progress * 40)
-                indicator.TextObject.Transparency = progress; indicator.TextObject.Visible = true
+                local progress = age / FADE_TIME
+                indicator.TextObject.Position = indicator.Position - Vector2.new(0, progress * 50)
+                indicator.TextObject.Transparency = progress ^ 2
+                
+                if age < POP_DURATION then
+                    local popProgress = age / POP_DURATION
+                    indicator.TextObject.Size = 24 + (12 * (1 - popProgress))
+                else
+                    indicator.TextObject.Size = 24
+                end
+                indicator.TextObject.Visible = true
             end
         end
 
@@ -1166,52 +1190,36 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local self = Arguments[1]
     if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) and currentTargetPart then
         local currentMethod = SilentAimSettings.SilentAimMethod
-        local shouldFireTracer = false
-        local originalRayOrigin = nil
 
         if (Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method) or 
            (Method == "FindPartOnRayWithWhitelist" and currentMethod == Method) or 
            ((Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower()) then
             
             if ValidateArguments(Arguments, ExpectedArguments[Method] or ExpectedArguments["FindPartOnRay"]) then
-                originalRayOrigin = Arguments[2].Origin
-                shouldFireTracer = true
+                lastShotOrigin = Arguments[2].Origin
                 if SilentAimSettings.Wallbang then
-                    if Toggles.TracerEnabled.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                        CreateTracer(currentTargetPart.Position, originalRayOrigin)
-                    end
                     return currentTargetPart, currentTargetPart.Position, currentTargetPart.CFrame.LookVector, currentTargetPart.Material
                 end
                 Arguments[2] = Ray.new(Arguments[2].Origin, getDirection(Arguments[2].Origin, currentTargetPart.Position))
             end
         elseif Method == "Raycast" and currentMethod == Method then
             if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                originalRayOrigin = Arguments[2]
-                shouldFireTracer = true
+                lastShotOrigin = Arguments[2]
                 if SilentAimSettings.Wallbang then
-                    local direction = getDirection(originalRayOrigin, currentTargetPart.Position)
+                    local direction = getDirection(lastShotOrigin, currentTargetPart.Position)
                     local wallbangParams = RaycastParams.new()
                     wallbangParams.FilterType = Enum.RaycastFilterType.Include
                     wallbangParams.FilterDescendantsInstances = {currentTargetPart.Parent}
-                    if Toggles.TracerEnabled.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                        CreateTracer(currentTargetPart.Position, originalRayOrigin)
-                    end
-                    local newArgs = {self, originalRayOrigin, direction, wallbangParams}
+                    local newArgs = {self, lastShotOrigin, direction, wallbangParams}
                     return oldNamecall(unpack(newArgs))
                 end
                 Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
             end
         elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
             local origin = Camera.CFrame.Position
-            if Toggles.TracerEnabled.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                CreateTracer(currentTargetPart.Position, origin)
-            end
+            lastShotOrigin = origin
             local direction = (currentTargetPart.Position - origin).Unit
             return Ray.new(origin, direction)
-        end
-
-        if shouldFireTracer and Toggles.TracerEnabled.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-             CreateTracer(currentTargetPart.Position, originalRayOrigin)
         end
     end
     return oldNamecall(...)
@@ -1222,10 +1230,8 @@ local oldRayNew
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
     if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
         if currentTargetPart then
-            if Toggles.TracerEnabled.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
-                    CreateTracer(currentTargetPart.Position, LocalPlayer.Character.Head.Position)
-                end
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
+                lastShotOrigin = LocalPlayer.Character.Head.Position
             end
             if Index == "Target" or Index == "target" then
                 return currentTargetPart
@@ -1245,9 +1251,7 @@ end))
 
 oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
     if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
-        if Toggles.TracerEnabled.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-            CreateTracer(currentTargetPart.Position, origin)
-        end
+        lastShotOrigin = origin
         local newDirectionVector = getDirection(origin, currentTargetPart.Position)
         return oldRayNew(origin, newDirectionVector)
     end
