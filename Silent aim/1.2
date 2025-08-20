@@ -24,6 +24,7 @@ local SilentAimSettings = {
     MouseHitPrediction = false,
     MouseHitPredictionAmount = 0.165,
     HitChance = 100,
+    HeadshotChance = 0,
     FixedFOV = true,
     TargetIndicatorRadius = 20,
     CrosshairLength = 30,
@@ -62,7 +63,6 @@ local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local Debris = game:GetService("Debris")
-local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
@@ -162,12 +162,6 @@ local HitSounds = {
     ["exp"] = "rbxassetid://10070796384"
 }
 
-local TracerTextures = {
-    ["Default"] = "rbxassetid://446111271",
-    ["Electric"] = "rbxassetid://8640662185",
-    ["Pulse"] = "rbxassetid://1190943639"
-}
-
 local rainbowColor = Color3.fromHSV(0, 1, 1)
 task.spawn(function()
     while task.wait() do
@@ -177,15 +171,6 @@ task.spawn(function()
     end
 end)
 
-local function RandomString(length)
-    local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
-    local str = ""
-    for i = 1, length do
-        str = str .. chars:sub(math.random(1, #chars), math.random(1, #chars))
-    end
-    return str
-end
-
 local function playHitSound(soundId)
     local sound = Instance.new("Sound")
     sound.Parent = CoreGui
@@ -194,134 +179,6 @@ local function playHitSound(soundId)
     sound:Play()
     Debris:AddItem(sound, sound.TimeLength + 0.2)
 end
-
-local function CreateTracer(targetPoint, visualStartPoint)
-    if not LocalPlayer.Character then return end
-
-    local penetrationDistance = 0
-    if Options.TracerPenetration then
-        if Toggles.RandomizePenetration and Toggles.RandomizePenetration.Value then
-            penetrationDistance = math.random() * Options.TracerPenetration.Value
-        else
-            penetrationDistance = Options.TracerPenetration.Value
-        end
-    end
-
-    local direction = (targetPoint - visualStartPoint).Unit
-    local actualStartPosition = visualStartPoint
-    local finalEndPosition = targetPoint + (direction * penetrationDistance)
-
-    if Toggles.BidirectionalPenetration and Toggles.BidirectionalPenetration.Value then
-        actualStartPosition = visualStartPoint - (direction * penetrationDistance)
-    end
-
-    local selectedTextureName = Options.TracerTexture.Value
-    local textureId = TracerTextures[selectedTextureName]
-    local tracerCurrentColor = Toggles.TracerRainbowColor.Value and rainbowColor or Options.TracerColor.Value
-
-    if Options.TracerMode.Value == "Beam" then
-        local startPart = Instance.new("Part")
-        startPart.Name = "TracerStart_" .. RandomString(8)
-        startPart.Anchored = true
-        startPart.CanCollide = false
-        startPart.Transparency = 1
-        startPart.Size = Vector3.new(0.1, 0.1, 0.1)
-        startPart.Position = actualStartPosition
-        startPart.Parent = workspace
-
-        local endPart = startPart:Clone()
-        endPart.Name = "TracerEnd_" .. RandomString(8)
-        endPart.Position = finalEndPosition
-        endPart.Parent = workspace
-
-        local startAttachment = Instance.new("Attachment", startPart)
-        local endAttachment = Instance.new("Attachment", endPart)
-
-        local beam = Instance.new("Beam")
-        beam.Name = "TracerBeam"
-        beam.Attachment0 = startAttachment
-        beam.Attachment1 = endAttachment
-        beam.Width0 = Options.TracerStartWidth.Value
-        beam.Width1 = Options.TracerEndWidth.Value
-        beam.Color = ColorSequence.new(tracerCurrentColor)
-        beam.Brightness = 1.5
-        beam.LightEmission = 1
-        beam.LightInfluence = 0
-        beam.Texture = textureId
-        beam.TextureMode = Enum.TextureMode.Wrap
-        beam.TextureLength = Options.TracerTextureLength.Value
-        beam.TextureSpeed = Options.TracerTextureSpeed.Value
-        beam.FaceCamera = true
-        beam.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.8, 0.2), NumberSequenceKeypoint.new(1, 1) })
-
-        if Toggles.TracerArcEnabled.Value then
-            local arcHeight = Options.TracerArcHeight.Value
-            beam.CurveSize0 = arcHeight
-            beam.CurveSize1 = -arcHeight
-        end
-
-        beam.Parent = startPart
-
-        if Toggles.TracerLightEnabled.Value then
-            local glow = Instance.new("PointLight", endAttachment)
-            glow.Name = "TracerGlow"
-            glow.Brightness = Options.TracerLightBrightness.Value
-            glow.Range = Options.TracerLightRange.Value
-            glow.Color = tracerCurrentColor
-        end
-
-        Debris:AddItem(startPart, Options.TracerDuration.Value)
-        Debris:AddItem(endPart, Options.TracerDuration.Value)
-    else
-        local tracerTrail = Instance.new("Part")
-        tracerTrail.Name = "TracerTrail_" .. RandomString(8)
-        tracerTrail.Anchored = true
-        tracerTrail.CanCollide = false
-        tracerTrail.Transparency = 1
-        tracerTrail.Size = Vector3.new(0.1, 0.1, 0.1)
-        tracerTrail.Position = actualStartPosition
-        tracerTrail.Parent = workspace
-
-        local attachment = Instance.new("Attachment", tracerTrail)
-        local trail = Instance.new("Trail", tracerTrail)
-        trail.Name = "TracerTrail"
-        trail.Attachment0 = attachment
-        trail.Color = ColorSequence.new(tracerCurrentColor)
-        trail.Texture = textureId
-        trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 1) })
-        trail.Lifetime = Options.TracerTrailLife.Value
-        trail.MinLength = 0.01
-        trail.MaxLength = Options.TracerTrailLength.Value
-        trail.LightEmission = 1
-        trail.FaceCamera = true
-
-        Debris:AddItem(tracerTrail, Options.TracerDuration.Value + 0.1)
-
-        if Toggles.TracerArcEnabled.Value and Options.TracerArcHeight.Value > 0 then
-            task.spawn(function()
-                local p0 = actualStartPosition
-                local p2 = finalEndPosition
-                local midPoint = (p0 + p2) / 2
-                local upVector = (p0 - p2).Unit:Cross(Vector3.new(0, 1, 0))
-                if upVector.Magnitude < 0.1 then upVector = (p0 - p2).Unit:Cross(Vector3.new(1, 0, 0)) end
-                local p1 = midPoint + upVector * Options.TracerArcHeight.Value * 5
-                local startTime = tick()
-                local duration = Options.TracerDuration.Value
-                while tick() - startTime < duration do
-                    if not tracerTrail or not tracerTrail.Parent then break end
-                    local t = (tick() - startTime) / duration
-                    tracerTrail.Position = (1 - t) ^ 2 * p0 + 2 * (1 - t) * t * p1 + t ^ 2 * p2
-                    RunService.Heartbeat:Wait()
-                end
-            end)
-        else
-            local tweenInfo = TweenInfo.new(Options.TracerDuration.Value, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-            local tween = TweenService:Create(tracerTrail, tweenInfo, { Position = finalEndPosition })
-            tween:Play()
-        end
-    end
-end
-
 
 function CalculateChance(Percentage)
     Percentage = math.floor(Percentage)
@@ -574,6 +431,7 @@ MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default 
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
 MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
 MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
+MainGroupBox:AddSlider('HeadshotChanceSlider', { Text = '爆头概率', Default = SilentAimSettings.HeadshotChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HeadshotChance = Value end)
 MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
 local VisualsGroupBox = Tabs.Main:AddLeftGroupbox("视觉效果")
@@ -598,28 +456,7 @@ Toggles.IndicatorRainbowToggle:OnChanged(function(Value) SilentAimSettings.Indic
 VisualsGroupBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "颜色变换速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRainbowSpeed, Rounding = 1, Compact = true })
 Options.IndicatorRainbowSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowSpeed = Value end)
 
-local TracerGroupBox = Tabs.Main:AddRightGroupbox("子弹轨迹")
-TracerGroupBox:AddToggle("TracerEnabled", { Text = "启用轨迹 (造成伤害时)", Default = false }):AddColorPicker("TracerColor", { Default = Color3.fromRGB(123, 123, 251), Title = "轨迹颜色" })
-TracerGroupBox:AddToggle("TracerRainbowColor", { Text = "轨迹线变色", Default = false })
-TracerGroupBox:AddDropdown("TracerMode", { Text = "轨迹模式", Values = {"Beam", "Particle"}, Default = "Beam" })
-TracerGroupBox:AddDropdown("TracerTexture", { Text = "轨迹样式", Default = "Pulse", Values = {"Default", "Electric", "Pulse"} })
-TracerGroupBox:AddSlider("TracerStartWidth", { Text = "起始宽度", Min = 0.1, Max = 3, Default = 0.8, Rounding = 1 })
-TracerGroupBox:AddSlider("TracerEndWidth", { Text = "结束宽度", Min = 0.1, Max = 3, Default = 0.1, Rounding = 1 })
-TracerGroupBox:AddSlider("TracerDuration", { Text = "持续时间", Min = 0.1, Max = 3, Default = 0.8, Rounding = 1 })
-TracerGroupBox:AddSlider("TracerTextureSpeed", { Text = "贴图速度", Min = 0.1, Max = 5, Default = 1, Rounding = 1 })
-TracerGroupBox:AddSlider("TracerTextureLength", { Text = "贴图长度", Min = 1, Max = 100, Default = 4, Rounding = 0 })
-TracerGroupBox:AddSlider("TracerPenetration", { Text = "贯穿距离", Min = 0, Max = 100, Default = 5, Rounding = 0, Suffix = " studs" })
-TracerGroupBox:AddToggle("RandomizePenetration", { Text = "随机贯穿", Default = false })
-TracerGroupBox:AddToggle("BidirectionalPenetration", { Text = "360°织网", Default = false })
-TracerGroupBox:AddToggle("TracerArcEnabled", { Text = "启用轨迹弧度", Default = false})
-TracerGroupBox:AddSlider("TracerArcHeight", { Text = "轨迹弧度高度", Min = 0, Max = 30, Default = 5, Rounding = 1 })
-TracerGroupBox:AddToggle("TracerLightEnabled", { Text = "启用光照", Default = true })
-TracerGroupBox:AddSlider("TracerLightBrightness", { Text = "光照亮度", Min = 0, Max = 10, Default = 2, Rounding = 1 })
-TracerGroupBox:AddSlider("TracerLightRange", { Text = "光照范围", Min = 0, Max = 20, Default = 8, Rounding = 1 })
-TracerGroupBox:AddSlider("TracerTrailLife", { Text = "粒子时长", Min = 0.1, Max = 2, Default = 0.5, Rounding = 1 })
-TracerGroupBox:AddSlider("TracerTrailLength", { Text = "粒子长度", Min = 0.1, Max = 2, Default = 0.8, Rounding = 1 })
-
-local PredictionGroupBox = Tabs.Main:AddLeftGroupbox("预判")
+local PredictionGroupBox = Tabs.Main:AddRightGroupbox("预判")
 PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
 PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
 
@@ -905,7 +742,7 @@ local lockedRandomPart = nil
 resume(create(function()
     RenderStepped:Connect(function()
         if SilentAimSettings.IndicatorRotationEnabled then currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2) end
-        if SilentAimSettings.IndicatorRainbowEnabled or SilentAimSettings.HighlightRainbowEnabled or (Toggles.TracerRainbowColor and Toggles.TracerRainbowColor.Value) or (Toggles.TransparentCharacterRainbow and Toggles.TransparentCharacterRainbow.Value) then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
+        if SilentAimSettings.IndicatorRainbowEnabled or SilentAimSettings.HighlightRainbowEnabled or (Toggles.TransparentCharacterRainbow and Toggles.TransparentCharacterRainbow.Value) then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
         
         local currentTime = tick()
         for i = #recentShots, 1, -1 do
@@ -968,11 +805,12 @@ resume(create(function()
                 currentTargetCharacter = nil
                 currentTargetPart = nil
             else
+                local baseTargetPart = nil
                 if SilentAimSettings.LeakAndHitMode then
                     for _, part in ipairs(currentTargetCharacter:GetDescendants()) do
                         if part:IsA("BasePart") and part.Parent == currentTargetCharacter then
                             if isPartVisible(part) then
-                                currentTargetPart = part
+                                baseTargetPart = part
                                 break
                             end
                         end
@@ -983,10 +821,25 @@ resume(create(function()
                         if not lockedRandomPart or not lockedRandomPart.Parent or lockedRandomPart.Parent ~= currentTargetCharacter then
                             lockedRandomPart = currentTargetCharacter[ValidTargetParts[math.random(1, #ValidTargetParts)]]
                         end
-                        currentTargetPart = lockedRandomPart
+                        baseTargetPart = lockedRandomPart
                     else
-                        currentTargetPart = currentTargetCharacter:FindFirstChild(targetPartName) or currentTargetCharacter:FindFirstChild("HumanoidRootPart")
+                        baseTargetPart = currentTargetCharacter:FindFirstChild(targetPartName) or currentTargetCharacter:FindFirstChild("HumanoidRootPart")
                     end
+                end
+
+                if baseTargetPart then
+                    if CalculateChance(SilentAimSettings.HeadshotChance) then
+                        local headPart = currentTargetCharacter:FindFirstChild("Head")
+                        if headPart then
+                            currentTargetPart = headPart
+                        else
+                            currentTargetPart = baseTargetPart
+                        end
+                    else
+                        currentTargetPart = baseTargetPart
+                    end
+                else
+                    currentTargetPart = nil
                 end
             end
         end
@@ -1011,15 +864,6 @@ resume(create(function()
                             local soundId = HitSounds[selectedSoundName]
                             if soundId then
                                 playHitSound(soundId)
-                            end
-                        end
-
-                        if Toggles.TracerEnabled.Value then
-                            if #recentShots > 0 then
-                                local shotToDraw = table.remove(recentShots, 1)
-                                if shotToDraw and tick() - shotToDraw.time < 0.5 then
-                                    CreateTracer(currentTargetPart.Position, shotToDraw.origin)
-                                end
                             end
                         end
                     end
