@@ -87,7 +87,7 @@ local currentIndicatorHue = 0
 local npcList = {}
 local targetMap = {}
 local avatarCache = {}
-local lastShotOrigin = nil
+local recentShots = {}
 
 local lockedTargetObject = nil
 
@@ -554,7 +554,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.2 优化版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.3 修复版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -893,6 +893,7 @@ end)
 
 local lastHealthValues = {}
 local damageIndicators = {}
+local DAMAGE_INDICATOR_FADE_TIME = 1
 
 local pos = SilentAimSettings.IndependentPanelPosition:split(",")
 IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
@@ -905,6 +906,13 @@ resume(create(function()
         if SilentAimSettings.IndicatorRotationEnabled then currentRotationAngle = (currentRotationAngle + (SilentAimSettings.IndicatorRotationSpeed / 50)) % (math.pi * 2) end
         if SilentAimSettings.IndicatorRainbowEnabled or SilentAimSettings.HighlightRainbowEnabled or (Toggles.TracerRainbowColor and Toggles.TracerRainbowColor.Value) or (Toggles.TransparentCharacterRainbow and Toggles.TransparentCharacterRainbow.Value) then currentIndicatorHue = (currentIndicatorHue + (SilentAimSettings.IndicatorRainbowSpeed / 200)) % 1 end
         
+        local currentTime = tick()
+        for i = #recentShots, 1, -1 do
+            if currentTime - recentShots[i].time > 1 then
+                table.remove(recentShots, i)
+            end
+        end
+
         local isEnabled = Toggles.EnabledToggle.Value
         currentTargetPart = nil
         local currentTargetCharacter = nil
@@ -991,17 +999,11 @@ resume(create(function()
                     local damage = math.floor(lastHealth - currentHealth)
                     if damage > 0 then
                         if SilentAimSettings.ShowDamageNotifier then
-                            local indicator = {}
-                            indicator.Created = tick()
-                            indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
+                            local indicator = {}; indicator.Created = tick(); indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
                             indicator.TextObject = Drawing.new("Text")
-                            indicator.TextObject.Font = Drawing.Fonts.Plex
-                            indicator.TextObject.Text = string.format("-%d", damage)
-                            indicator.TextObject.Color = Color3.fromRGB(255, 70, 70)
-                            indicator.TextObject.Size = 24
-                            indicator.TextObject.Center = true
-                            indicator.TextObject.Outline = true
-                            indicator.TextObject.OutlineColor = Color3.new(0,0,0)
+                            indicator.TextObject.Font = Drawing.Fonts.Monospace; indicator.TextObject.Text = string.format("-%d", damage)
+                            indicator.TextObject.Color = Color3.fromRGB(255, 50, 50); indicator.TextObject.Size = 20
+                            indicator.TextObject.Center = true; indicator.TextObject.Outline = true
                             table.insert(damageIndicators, indicator)
                         end
                         
@@ -1013,9 +1015,13 @@ resume(create(function()
                             end
                         end
 
-                        if Toggles.TracerEnabled.Value and lastShotOrigin then
-                            CreateTracer(currentTargetPart.Position, lastShotOrigin)
-                            lastShotOrigin = nil 
+                        if Toggles.TracerEnabled.Value then
+                            if #recentShots > 0 then
+                                local shotToDraw = table.remove(recentShots, 1) 
+                                if shotToDraw and tick() - shotToDraw.time < 0.5 then
+                                    CreateTracer(currentTargetPart.Position, shotToDraw.origin)
+                                end
+                            end
                         end
                     end
                 end
@@ -1024,26 +1030,13 @@ resume(create(function()
         end
 
         for i = #damageIndicators, 1, -1 do
-            local indicator = damageIndicators[i]
-            local FADE_TIME = 0.8
-            local POP_DURATION = 0.15
-            local age = tick() - indicator.Created
-
-            if age > FADE_TIME then
-                indicator.TextObject:Remove()
-                table.remove(damageIndicators, i)
+            local indicator = damageIndicators[i]; local age = tick() - indicator.Created
+            if age > DAMAGE_INDICATOR_FADE_TIME then
+                indicator.TextObject:Remove(); table.remove(damageIndicators, i)
             else
-                local progress = age / FADE_TIME
-                indicator.TextObject.Position = indicator.Position - Vector2.new(0, progress * 50)
-                indicator.TextObject.Transparency = progress ^ 2
-                
-                if age < POP_DURATION then
-                    local popProgress = age / POP_DURATION
-                    indicator.TextObject.Size = 24 + (12 * (1 - popProgress))
-                else
-                    indicator.TextObject.Size = 24
-                end
-                indicator.TextObject.Visible = true
+                local progress = age / DAMAGE_INDICATOR_FADE_TIME
+                indicator.TextObject.Position = indicator.Position - Vector2.new(0, progress * 40)
+                indicator.TextObject.Transparency = progress; indicator.TextObject.Visible = true
             end
         end
 
@@ -1190,36 +1183,43 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local self = Arguments[1]
     if SilentAimSettings.Enabled and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) and currentTargetPart then
         local currentMethod = SilentAimSettings.SilentAimMethod
+        local shotOrigin = nil
 
         if (Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method) or 
            (Method == "FindPartOnRayWithWhitelist" and currentMethod == Method) or 
            ((Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower()) then
             
             if ValidateArguments(Arguments, ExpectedArguments[Method] or ExpectedArguments["FindPartOnRay"]) then
-                lastShotOrigin = Arguments[2].Origin
+                shotOrigin = Arguments[2].Origin
                 if SilentAimSettings.Wallbang then
+                    table.insert(recentShots, {origin = shotOrigin, time = tick()})
                     return currentTargetPart, currentTargetPart.Position, currentTargetPart.CFrame.LookVector, currentTargetPart.Material
                 end
                 Arguments[2] = Ray.new(Arguments[2].Origin, getDirection(Arguments[2].Origin, currentTargetPart.Position))
             end
         elseif Method == "Raycast" and currentMethod == Method then
             if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
-                lastShotOrigin = Arguments[2]
+                shotOrigin = Arguments[2]
                 if SilentAimSettings.Wallbang then
-                    local direction = getDirection(lastShotOrigin, currentTargetPart.Position)
+                    table.insert(recentShots, {origin = shotOrigin, time = tick()})
+                    local direction = getDirection(shotOrigin, currentTargetPart.Position)
                     local wallbangParams = RaycastParams.new()
                     wallbangParams.FilterType = Enum.RaycastFilterType.Include
                     wallbangParams.FilterDescendantsInstances = {currentTargetPart.Parent}
-                    local newArgs = {self, lastShotOrigin, direction, wallbangParams}
+                    local newArgs = {self, shotOrigin, direction, wallbangParams}
                     return oldNamecall(unpack(newArgs))
                 end
                 Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
             end
         elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
-            local origin = Camera.CFrame.Position
-            lastShotOrigin = origin
-            local direction = (currentTargetPart.Position - origin).Unit
-            return Ray.new(origin, direction)
+            shotOrigin = Camera.CFrame.Position
+            local direction = (currentTargetPart.Position - shotOrigin).Unit
+            table.insert(recentShots, {origin = shotOrigin, time = tick()})
+            return Ray.new(shotOrigin, direction)
+        end
+        
+        if shotOrigin then
+            table.insert(recentShots, {origin = shotOrigin, time = tick()})
         end
     end
     return oldNamecall(...)
@@ -1231,7 +1231,7 @@ oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, Index)
     if self == Mouse and not checkcaller() and SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Mouse.Hit/Target" then
         if currentTargetPart then
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
-                lastShotOrigin = LocalPlayer.Character.Head.Position
+                table.insert(recentShots, {origin = LocalPlayer.Character.Head.Position, time = tick()})
             end
             if Index == "Target" or Index == "target" then
                 return currentTargetPart
@@ -1251,7 +1251,7 @@ end))
 
 oldRayNew = hookfunction(Ray.new, newcclosure(function(origin, direction)
     if SilentAimSettings.Enabled and SilentAimSettings.SilentAimMethod == "Ray" and currentTargetPart and not checkcaller() and CalculateChance(SilentAimSettings.HitChance) then
-        lastShotOrigin = origin
+        table.insert(recentShots, {origin = origin, time = tick()})
         local newDirectionVector = getDirection(origin, currentTargetPart.Position)
         return oldRayNew(origin, newDirectionVector)
     end
