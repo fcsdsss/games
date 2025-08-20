@@ -88,6 +88,7 @@ local npcList = {}
 local targetMap = {}
 local avatarCache = {}
 local recentShots = {}
+local pendingDamage = {}
 
 local lockedTargetObject = nil
 
@@ -554,7 +555,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.3 修复版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.4 修复版", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -990,7 +991,7 @@ resume(create(function()
             end
         end
 
-        if isEnabled and currentTargetPart and (SilentAimSettings.ShowDamageNotifier or Options.HitSound.Value ~= '关闭' or Toggles.TracerEnabled.Value) then
+        if isEnabled and currentTargetPart then
             local humanoid = currentTargetPart.Parent:FindFirstChildOfClass("Humanoid")
             if humanoid then
                 local currentHealth = humanoid.Health
@@ -998,15 +999,13 @@ resume(create(function()
                 if lastHealth and currentHealth < lastHealth then
                     local damage = math.floor(lastHealth - currentHealth)
                     if damage > 0 then
-                        if SilentAimSettings.ShowDamageNotifier then
-                            local indicator = {}; indicator.Created = tick(); indicator.Position, _ = getPositionOnScreen(currentTargetPart.Position)
-                            indicator.TextObject = Drawing.new("Text")
-                            indicator.TextObject.Font = Drawing.Fonts.Monospace; indicator.TextObject.Text = string.format("-%d", damage)
-                            indicator.TextObject.Color = Color3.fromRGB(255, 50, 50); indicator.TextObject.Size = 20
-                            indicator.TextObject.Center = true; indicator.TextObject.Outline = true
-                            table.insert(damageIndicators, indicator)
+                        if not pendingDamage[humanoid] then
+                            pendingDamage[humanoid] = { damage = 0, lastUpdate = tick(), position = currentTargetPart.Position }
                         end
-                        
+                        pendingDamage[humanoid].damage = pendingDamage[humanoid].damage + damage
+                        pendingDamage[humanoid].lastUpdate = tick()
+                        pendingDamage[humanoid].position = currentTargetPart.Position
+
                         local selectedSoundName = Options.HitSound.Value
                         if selectedSoundName ~= '关闭' then
                             local soundId = HitSounds[selectedSoundName]
@@ -1017,7 +1016,7 @@ resume(create(function()
 
                         if Toggles.TracerEnabled.Value then
                             if #recentShots > 0 then
-                                local shotToDraw = table.remove(recentShots, 1) 
+                                local shotToDraw = table.remove(recentShots, 1)
                                 if shotToDraw and tick() - shotToDraw.time < 0.5 then
                                     CreateTracer(currentTargetPart.Position, shotToDraw.origin)
                                 end
@@ -1028,6 +1027,30 @@ resume(create(function()
                 lastHealthValues[humanoid] = currentHealth
             end
         end
+        
+        local DAMAGE_ACCUMULATION_WINDOW = 0.15
+        for humanoid, data in pairs(pendingDamage) do
+            if currentTime - data.lastUpdate > DAMAGE_ACCUMULATION_WINDOW then
+                if SilentAimSettings.ShowDamageNotifier and data.damage > 0 then
+                    local screenPos, onScreen = getPositionOnScreen(data.position)
+                    if onScreen then
+                        local indicator = {}; 
+                        indicator.Created = tick(); 
+                        indicator.Position = screenPos;
+                        indicator.TextObject = Drawing.new("Text")
+                        indicator.TextObject.Font = Drawing.Fonts.Monospace; 
+                        indicator.TextObject.Text = string.format("-%d", data.damage)
+                        indicator.TextObject.Color = Color3.fromRGB(255, 50, 50); 
+                        indicator.TextObject.Size = 20
+                        indicator.TextObject.Center = true; 
+                        indicator.TextObject.Outline = true
+                        table.insert(damageIndicators, indicator)
+                    end
+                end
+                pendingDamage[humanoid] = nil
+            end
+        end
+
 
         for i = #damageIndicators, 1, -1 do
             local indicator = damageIndicators[i]; local age = tick() - indicator.Created
