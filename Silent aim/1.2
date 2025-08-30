@@ -51,7 +51,9 @@ local SilentAimSettings = {
     Wallbang = false,
     EnableNameTargeting = false,
     WhitelistedNames = {},
-    BlacklistedNames = {}
+    BlacklistedNames = {},
+    ShowTracer = false,
+    Tracer_Y_Offset = 0
 }
 
 getgenv().SilentAimSettings = SilentAimSettings
@@ -97,6 +99,8 @@ local target_indicator_circle = Drawing.new("Circle")
 target_indicator_circle.Visible = false; target_indicator_circle.ZIndex = 1000; target_indicator_circle.Thickness = 2; target_indicator_circle.Filled = false
 local target_indicator_lines = {}
 for i = 1, 5 do local line = Drawing.new("Line"); line.Visible = false; line.ZIndex = 1000; line.Thickness = 2; table.insert(target_indicator_lines, line) end
+local tracer_line = Drawing.new("Line")
+tracer_line.Visible = false; tracer_line.ZIndex = 998; tracer_line.Color = Color3.fromRGB(255, 255, 0); tracer_line.Thickness = 1; tracer_line.Transparency = 1
 
 local overhead_info_texts = {
     Name = Drawing.new("Text"),
@@ -132,7 +136,7 @@ FOVCorner.Name = "FOVCorner"; FOVCorner.CornerRadius = UDim.new(1, 0)
 local IndependentPanelGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 IndependentPanelGui.Name = "IndependentPanelGui"; IndependentPanelGui.ResetOnSpawn = false; IndependentPanelGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 local IndependentPanelFrame = Instance.new("Frame", IndependentPanelGui)
-IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 100); 
+IndependentPanelFrame.Name = "PanelFrame"; IndependentPanelFrame.Size = UDim2.fromOffset(160, 100);
 IndependentPanelFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30); IndependentPanelFrame.BackgroundTransparency = 0.3; IndependentPanelFrame.BorderSizePixel = 1; IndependentPanelFrame.BorderColor3 = Color3.new(1,1,1)
 IndependentPanelFrame.Visible = false; IndependentPanelFrame.Active = true
 local IPCorner = Instance.new("UICorner", IndependentPanelFrame); IPCorner.CornerRadius = UDim.new(0, 4)
@@ -236,7 +240,7 @@ end
 
 local function updateNPCs()
     local newNpcList = {}
-    local addedNpcs = {} 
+    local addedNpcs = {}
 
     if SilentAimSettings.EnableNameTargeting and #SilentAimSettings.WhitelistedNames > 0 then
         for _, model in ipairs(workspace:GetDescendants()) do
@@ -246,7 +250,7 @@ local function updateNPCs()
                         if not addedNpcs[model] then
                             table.insert(newNpcList, model)
                             addedNpcs[model] = true
-                            break 
+                            break
                         end
                     end
                 end
@@ -417,73 +421,81 @@ local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
-    Misc = Window:AddTab("杂项", "boxes"),
+    Visuals = Window:AddTab("视觉", "camera"),
+    Management = Window:AddTab("管理", "users"),
+    Misc = Window:AddTab("杂项", "box"),
     ["UI Settings"] = Window:AddTab("UI设置", "settings"),
 }
 
-local MainGroupBox = Tabs.Main:AddLeftGroupbox("主设置", "boxes")
-MainGroupBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSettings.Enabled }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
+local MainSettingsBox = Tabs.Main:AddLeftGroupbox("主设置")
+MainSettingsBox:AddToggle("EnabledToggle", { Text = "启用", Default = SilentAimSettings.Enabled }):AddKeyPicker("EnabledKeybind", { Default = SilentAimSettings.ToggleKey, SyncToggleState = true, Mode = "Toggle" })
 Toggles.EnabledToggle:OnChanged(function(Value) SilentAimSettings.Enabled = Value end)
-MainGroupBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
-MainGroupBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
-MainGroupBox:AddToggle("WallbangToggle", { Text = "穿墙", Default = SilentAimSettings.Wallbang}):OnChanged(function(Value) SilentAimSettings.Wallbang = Value end)
-MainGroupBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value) SilentAimSettings.LeakAndHitMode = Value end)
-MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = "请选择", Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
-MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
-MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
-MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
+MainSettingsBox:AddToggle("TeamCheckToggle", { Text = "队伍检查", Default = SilentAimSettings.TeamCheck }):OnChanged(function(Value) SilentAimSettings.TeamCheck = Value end)
+MainSettingsBox:AddToggle("VisibleCheckToggle", { Text = "可见性检查", Default = SilentAimSettings.VisibleCheck }):OnChanged(function(Value) SilentAimSettings.VisibleCheck = Value end)
+MainSettingsBox:AddToggle("WallbangToggle", { Text = "穿墙", Default = SilentAimSettings.Wallbang}):OnChanged(function(Value) SilentAimSettings.Wallbang = Value end)
+MainSettingsBox:AddToggle("LeakAndHitToggle", { Text = "漏打模式", Default = SilentAimSettings.LeakAndHitMode}):OnChanged(function(Value) SilentAimSettings.LeakAndHitMode = Value end)
+MainSettingsBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
 
-MainGroupBox:AddToggle("HeadshotChanceToggle", { Text = "启用爆头几率", Default = SilentAimSettings.HeadshotChanceEnabled }):OnChanged(function(Value) SilentAimSettings.HeadshotChanceEnabled = Value end)
+local TargetingBox = Tabs.Main:AddRightGroupbox("目标")
+TargetingBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default = "请选择", Values = {"玩家", "NPC", "所有"} }):OnChanged(function(Value) SilentAimSettings.TargetMode = Value end)
+TargetingBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
+TargetingBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量", "最近的人(无FOV)"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
+TargetingBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
-MainGroupBox:AddSlider('HeadshotChanceSlider', { Text = '爆头概率', Default = SilentAimSettings.HeadshotChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HeadshotChance = Value end)
-MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
+local MethodBox = Tabs.Main:AddRightGroupbox("方法")
+MethodBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
+MethodBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
+MethodBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
+MethodBox:AddToggle("HeadshotChanceToggle", { Text = "启用爆头几率", Default = SilentAimSettings.HeadshotChanceEnabled }):OnChanged(function(Value) SilentAimSettings.HeadshotChanceEnabled = Value end)
+MethodBox:AddSlider('HeadshotChanceSlider', { Text = '爆头概率', Default = SilentAimSettings.HeadshotChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HeadshotChance = Value end)
 
-local VisualsGroupBox = Tabs.Main:AddLeftGroupbox("视觉效果")
-VisualsGroupBox:AddToggle("FOVVisibleToggle", { Text = "显示FOV圈", Default = SilentAimSettings.FOVVisible }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV圈颜色" })
+local FovIndicatorBox = Tabs.Visuals:AddLeftGroupbox("范围与指示器")
+FovIndicatorBox:AddToggle("FOVVisibleToggle", { Text = "显示FOV圈", Default = SilentAimSettings.FOVVisible }):AddColorPicker("FOVColorPicker", { Default = Color3.fromRGB(54, 57, 241), Title = "FOV圈颜色" })
 Toggles.FOVVisibleToggle:OnChanged(function(Value) FOVCircleGui.Enabled = Value; SilentAimSettings.FOVVisible = Value end)
 Options.FOVColorPicker:OnChanged(function(Value) FOVStroke.Color = Value end)
-VisualsGroupBox:AddSlider("FOVRadiusSlider", { Text = "FOV圈半径", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 }):OnChanged(function(Value) FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2); SilentAimSettings.FOVRadius = Value end)
-VisualsGroupBox:AddToggle("FixedFOVToggle", { Text = "固定FOV (移动端)", Default = SilentAimSettings.FixedFOV }):OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
-VisualsGroupBox:AddToggle("ShowTargetToggle", { Text = "显示目标", Default = SilentAimSettings.ShowSilentAimTarget }):AddColorPicker("TargetIndicatorColorPicker", { Default = Color3.fromRGB(255,0,0), Title = "指示器颜色" })
+FovIndicatorBox:AddSlider("FOVRadiusSlider", { Text = "FOV圈半径", Min = 10, Max = 1000, Default = SilentAimSettings.FOVRadius, Rounding = 0 }):OnChanged(function(Value) FOVCircleFrame.Size = UDim2.fromOffset(Value * 2, Value * 2); SilentAimSettings.FOVRadius = Value end)
+FovIndicatorBox:AddToggle("FixedFOVToggle", { Text = "固定FOV (移动端)", Default = SilentAimSettings.FixedFOV }):OnChanged(function(Value) SilentAimSettings.FixedFOV = Value end)
+FovIndicatorBox:AddToggle("ShowTargetToggle", { Text = "显示目标", Default = SilentAimSettings.ShowSilentAimTarget }):AddColorPicker("TargetIndicatorColorPicker", { Default = Color3.fromRGB(255,0,0), Title = "指示器颜色" })
 Toggles.ShowTargetToggle:OnChanged(function(Value) SilentAimSettings.ShowSilentAimTarget = Value end)
 Options.TargetIndicatorColorPicker:OnChanged(function(Value) target_indicator_circle.Color = Value; for _, line in ipairs(target_indicator_lines) do line.Color = Value end end)
-VisualsGroupBox:AddDropdown("IndicatorStyleDropdown", { Text = "指示器样式", Values = {"Circle", "Triangle", "Pentagram", "十字准星"}, Default = "Circle" })
-VisualsGroupBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "指示器大小(通用)", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
-VisualsGroupBox:AddSlider("CrosshairLengthSlider", { Text = "十字准星长度", Min = 5, Max = 100, Default = SilentAimSettings.CrosshairLength, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.CrosshairLength = Value end)
-VisualsGroupBox:AddSlider("CrosshairGapSlider", { Text = "十字准星间隙", Min = 0, Max = 50, Default = SilentAimSettings.CrosshairGap, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.CrosshairGap = Value end)
-VisualsGroupBox:AddToggle("IndicatorRotationToggle", { Text = "指示器旋转", Default = SilentAimSettings.IndicatorRotationEnabled })
-Toggles.IndicatorRotationToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRotationEnabled = Value end)
-VisualsGroupBox:AddSlider("IndicatorRotationSpeedSlider", { Text = "旋转速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRotationSpeed, Rounding = 1, Compact = true })
-Options.IndicatorRotationSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRotationSpeed = Value end)
-VisualsGroupBox:AddToggle("IndicatorRainbowToggle", { Text = "启用彩虹色", Default = SilentAimSettings.IndicatorRainbowEnabled })
-Toggles.IndicatorRainbowToggle:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowEnabled = Value end)
-VisualsGroupBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "颜色变换速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRainbowSpeed, Rounding = 1, Compact = true })
-Options.IndicatorRainbowSpeedSlider:OnChanged(function(Value) SilentAimSettings.IndicatorRainbowSpeed = Value end)
+FovIndicatorBox:AddDropdown("IndicatorStyleDropdown", { Text = "指示器样式", Values = {"Circle", "Triangle", "Pentagram", "十字准星"}, Default = "Circle" })
+FovIndicatorBox:AddSlider("TargetIndicatorRadiusSlider", { Text = "指示器大小(通用)", Min = 5, Max = 50, Default = SilentAimSettings.TargetIndicatorRadius, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.TargetIndicatorRadius = Value end)
+FovIndicatorBox:AddSlider("CrosshairLengthSlider", { Text = "十字准星长度", Min = 5, Max = 100, Default = SilentAimSettings.CrosshairLength, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.CrosshairLength = Value end)
+FovIndicatorBox:AddSlider("CrosshairGapSlider", { Text = "十字准星间隙", Min = 0, Max = 50, Default = SilentAimSettings.CrosshairGap, Rounding = 0 }):OnChanged(function(Value) SilentAimSettings.CrosshairGap = Value end)
+FovIndicatorBox:AddToggle("IndicatorRotationToggle", { Text = "指示器旋转", Default = SilentAimSettings.IndicatorRotationEnabled }):OnChanged(function(Value) SilentAimSettings.IndicatorRotationEnabled = Value end)
+FovIndicatorBox:AddSlider("IndicatorRotationSpeedSlider", { Text = "旋转速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRotationSpeed, Rounding = 1 }):OnChanged(function(Value) SilentAimSettings.IndicatorRotationSpeed = Value end)
+FovIndicatorBox:AddToggle("IndicatorRainbowToggle", { Text = "启用彩虹色", Default = SilentAimSettings.IndicatorRainbowEnabled }):OnChanged(function(Value) SilentAimSettings.IndicatorRainbowEnabled = Value end)
+FovIndicatorBox:AddSlider("IndicatorRainbowSpeedSlider", { Text = "颜色变换速度", Min = 0, Max = 10, Default = SilentAimSettings.IndicatorRainbowSpeed, Rounding = 1 }):OnChanged(function(Value) SilentAimSettings.IndicatorRainbowSpeed = Value end)
 
-local PredictionGroupBox = Tabs.Main:AddRightGroupbox("预判")
-PredictionGroupBox:AddToggle("PredictionToggle", { Text = "Mouse.Hit/Target 预判", Default = SilentAimSettings.MouseHitPrediction }):OnChanged(function(Value) SilentAimSettings.MouseHitPrediction = Value end)
-PredictionGroupBox:AddSlider("PredictionAmountSlider", { Text = "预判量", Min = 0, Max = 1, Default = SilentAimSettings.MouseHitPredictionAmount, Rounding = 3 }):OnChanged(function(Value) SilentAimSettings.MouseHitPredictionAmount = Value; PredictionAmount = Value end)
-
-local MiscGroupBox = Tabs.Misc:AddLeftGroupbox("杂项")
-MiscGroupBox:AddDropdown("PriorityModeDropdown", { Text = "优先模式", Default = SilentAimSettings.PriorityMode, Values = {"准星最近", "距离最近", "最低血量", "最近的人(无FOV)"} }):OnChanged(function(Value) SilentAimSettings.PriorityMode = Value end)
-MiscGroupBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
-MiscGroupBox:AddDropdown('HitSound', { Text = '击中音效', Default = '关闭', Values = {'关闭', 'bell', 'metal', 'click', 'exp'} })
-MiscGroupBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName }):OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
-MiscGroupBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth }):OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
-MiscGroupBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance }):OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
-MiscGroupBox:AddToggle("ShowTargetCategoryToggle", { Text = "显示目标类别", Default = SilentAimSettings.ShowTargetCategory }):OnChanged(function(Value) SilentAimSettings.ShowTargetCategory = Value end)
-MiscGroupBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier }):OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
-MiscGroupBox:AddButton("重置独立面板位置", function()
+local InfoBox = Tabs.Visuals:AddRightGroupbox("信息")
+InfoBox:AddDropdown("TargetInfoStyleDropdown", { Text = "信息显示样式", Default = SilentAimSettings.TargetInfoStyle, Values = {"面板", "头顶", "独立面板"} }):OnChanged(function(Value) SilentAimSettings.TargetInfoStyle = Value end)
+InfoBox:AddToggle("ShowTargetNameToggle", { Text = "显示目标名字", Default = SilentAimSettings.ShowTargetName }):OnChanged(function(Value) SilentAimSettings.ShowTargetName = Value end)
+InfoBox:AddToggle("ShowTargetHealthToggle", { Text = "显示目标血量", Default = SilentAimSettings.ShowTargetHealth }):OnChanged(function(Value) SilentAimSettings.ShowTargetHealth = Value end)
+InfoBox:AddToggle("ShowTargetDistanceToggle", { Text = "显示目标距离", Default = SilentAimSettings.ShowTargetDistance }):OnChanged(function(Value) SilentAimSettings.ShowTargetDistance = Value end)
+InfoBox:AddToggle("ShowTargetCategoryToggle", { Text = "显示目标类别", Default = SilentAimSettings.ShowTargetCategory }):OnChanged(function(Value) SilentAimSettings.ShowTargetCategory = Value end)
+InfoBox:AddButton("重置独立面板位置", function()
     SilentAimSettings.IndependentPanelPosition = "200,200"
     local pos = SilentAimSettings.IndependentPanelPosition:split(",")
     IndependentPanelFrame.Position = UDim2.fromOffset(tonumber(pos[1]), tonumber(pos[2]))
 end)
-MiscGroupBox:AddToggle("PinPanelToggle", {Text = "固定面板", Default = SilentAimSettings.IndependentPanelPinned}):OnChanged(function(value)
+InfoBox:AddToggle("PinPanelToggle", {Text = "固定面板", Default = SilentAimSettings.IndependentPanelPinned}):OnChanged(function(value)
     SilentAimSettings.IndependentPanelPinned = value
     IndependentPanelFrame.Draggable = not value
 end)
 
-local ManualLockGroupBox = Tabs.Misc:AddLeftGroupbox("锁定")
+local ExtrasBox = Tabs.Visuals:AddRightGroupbox("额外")
+ExtrasBox:AddToggle("HighlightToggle", { Text = "启用高亮", Default = SilentAimSettings.HighlightEnabled }):AddColorPicker("HighlightColorPicker", { Default = SilentAimSettings.HighlightColor, Title = "高亮颜色" })
+Toggles.HighlightToggle:OnChanged(function(Value) SilentAimSettings.HighlightEnabled = Value end)
+Options.HighlightColorPicker:OnChanged(function(Value) SilentAimSettings.HighlightColor = Value end)
+ExtrasBox:AddToggle("HighlightRainbowToggle", { Text = "高亮彩虹色", Default = SilentAimSettings.HighlightRainbowEnabled }):OnChanged(function(Value) SilentAimSettings.HighlightRainbowEnabled = Value end)
+ExtrasBox:AddToggle("DamageNotifierToggle", { Text = "显示伤害通知", Default = SilentAimSettings.ShowDamageNotifier }):OnChanged(function(Value) SilentAimSettings.ShowDamageNotifier = Value end)
+ExtrasBox:AddDropdown('HitSound', { Text = '击中音效', Default = '关闭', Values = {'关闭', 'bell', 'metal', 'click', 'exp'} })
+ExtrasBox:AddToggle("ShowTracerToggle", { Text = "显示目标追踪线", Default = SilentAimSettings.ShowTracer }):AddColorPicker("TracerColorPicker", { Default = tracer_line.Color, Title = "追踪线颜色" })
+Toggles.ShowTracerToggle:OnChanged(function(Value) SilentAimSettings.ShowTracer = Value end)
+Options.TracerColorPicker:OnChanged(function(Value) tracer_line.Color = Value end)
+ExtrasBox:AddSlider('TracerYOffsetSlider', { Text = '追踪线Y轴偏移', Default = SilentAimSettings.Tracer_Y_Offset, Min = -10, Max = 10, Rounding = 3, Suffix = " studs" }):OnChanged(function(Value) SilentAimSettings.Tracer_Y_Offset = Value end)
+
+local ManualLockGroupBox = Tabs.Management:AddLeftGroupbox("手动锁定")
 ManualLockGroupBox:AddDropdown("TargetSelectorDropdown", { Text = "锁定目标 (无=自动)", Default = "无", Values = {"无"} }):OnChanged(function(selectedName)
     if selectedName == "无" then
         lockedTargetObject = nil
@@ -497,7 +509,7 @@ ManualLockGroupBox:AddButton("刷新列表", function()
     local targetMode = SilentAimSettings.TargetMode
     
     if targetMode == "NPC" or targetMode == "所有" then
-        updateNPCs() 
+        updateNPCs()
     end
     
     if targetMode == "玩家" or targetMode == "所有" then
@@ -524,93 +536,16 @@ ManualLockGroupBox:AddButton("刷新列表", function()
     lockedTargetObject = nil
 end)
 
-local HighlightGroupBox = Tabs.Misc:AddRightGroupbox("高亮")
-HighlightGroupBox:AddToggle("HighlightToggle", { Text = "启用高亮", Default = SilentAimSettings.HighlightEnabled }):AddColorPicker("HighlightColorPicker", { Default = SilentAimSettings.HighlightColor, Title = "高亮颜色" })
-Toggles.HighlightToggle:OnChanged(function(Value) SilentAimSettings.HighlightEnabled = Value end)
-Options.HighlightColorPicker:OnChanged(function(Value) SilentAimSettings.HighlightColor = Value end)
-HighlightGroupBox:AddToggle("HighlightRainbowToggle", { Text = "高亮彩虹色", Default = SilentAimSettings.HighlightRainbowEnabled }):OnChanged(function(Value) SilentAimSettings.HighlightRainbowEnabled = Value end)
-
-local CharacterModGroup = Tabs.Misc:AddRightGroupbox("角色修改")
-local originalCharacterData = {}
-local transparencyLoopConnection = nil
-
-local function restoreCharacterAppearance()
-    for part, data in pairs(originalCharacterData) do
-        if part and part.Parent then
-            part.Material = data.material
-            part.Color = data.color
-            part.Transparency = data.transparency
-        end
-    end
-    originalCharacterData = {}
-end
-
-local function transparencyLoop()
-    if not LocalPlayer.Character then
-        if next(originalCharacterData) then
-            originalCharacterData = {}
-        end
-        return
-    end
-
-    local isRainbowEnabled = Toggles.TransparentCharacterRainbow.Value
-
-    for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            if not originalCharacterData[part] then
-                originalCharacterData[part] = {
-                    material = part.Material,
-                    color = part.Color,
-                    transparency = part.Transparency
-                }
-            end
-            
-            part.Material = Enum.Material.ForceField
-            
-            if isRainbowEnabled then
-                part.Color = rainbowColor
-            else
-                part.Color = originalCharacterData[part].color
-            end
-        end
-    end
-end
-
-CharacterModGroup:AddToggle("TransparentCharacterEnabled", { Text = "人物透明", Default = false }):OnChanged(function(value)
-    if value then
-        transparencyLoopConnection = RunService.Heartbeat:Connect(transparencyLoop)
-    else
-        if transparencyLoopConnection then
-            transparencyLoopConnection:Disconnect()
-            transparencyLoopConnection = nil
-        end
-        restoreCharacterAppearance()
-    end
-end)
-
-CharacterModGroup:AddToggle("TransparentCharacterRainbow", { Text = "人物变色", Default = false }):OnChanged(function(value)
-    if not value and Toggles.TransparentCharacterEnabled.Value then
-        restoreCharacterAppearance()
-        task.wait() 
-        transparencyLoop()
-    end
-end)
-
-local NameTargetingGroup = Tabs.Misc:AddRightGroupbox("名称索敌")
+local NameTargetingGroup = Tabs.Management:AddLeftGroupbox("名称索敌")
 NameTargetingGroup:AddToggle("EnableNameTargetingToggle", { Text = "启用名称索敌", Default = SilentAimSettings.EnableNameTargeting }):OnChanged(function(Value)
     SilentAimSettings.EnableNameTargeting = Value
 end)
-
-local whitelistDataOption = NameTargetingGroup:AddInput("WhitelistData", {
-    Text = "Whitelist Internal Data",
-    Default = "[]" 
-})
-whitelistDataOption.Visible = false 
+local whitelistDataOption = NameTargetingGroup:AddInput("WhitelistData", { Text = "Whitelist Internal Data", Default = "[]" })
+whitelistDataOption.Visible = false
 local function updateWhitelistData()
     local jsonString = HttpService:JSONEncode(SilentAimSettings.WhitelistedNames)
     whitelistDataOption:SetValue(jsonString)
 end
-
 NameTargetingGroup:AddInput("WhitelistNameInput", { Text = "名称", PlaceholderText = "输入要锁定的NPC名称关键字" })
 NameTargetingGroup:AddButton("添加到列表", function()
     local name = Options.WhitelistNameInput.Value
@@ -618,10 +553,9 @@ NameTargetingGroup:AddButton("添加到列表", function()
         table.insert(SilentAimSettings.WhitelistedNames, name)
         Options.WhitelistDropdown:SetValues(SilentAimSettings.WhitelistedNames)
         Options.WhitelistNameInput:SetValue("")
-        updateWhitelistData() 
+        updateWhitelistData()
     end
 end)
-
 NameTargetingGroup:AddDropdown("WhitelistDropdown", { Text = "名称列表", Values = SilentAimSettings.WhitelistedNames or {} })
 NameTargetingGroup:AddButton("从列表中删除", function()
     local selectedName = Options.WhitelistDropdown.Value
@@ -633,10 +567,9 @@ NameTargetingGroup:AddButton("从列表中删除", function()
             end
         end
         Options.WhitelistDropdown:SetValues(SilentAimSettings.WhitelistedNames)
-        updateWhitelistData() 
+        updateWhitelistData()
     end
 end)
-
 whitelistDataOption:OnChanged(function(jsonString)
     if not jsonString or jsonString == "" then jsonString = "[]" end
     local success, decoded = pcall(HttpService.JSONDecode, HttpService, jsonString)
@@ -646,7 +579,105 @@ whitelistDataOption:OnChanged(function(jsonString)
     end
 end)
 
-local EntertainmentGroup = Tabs.Misc:AddRightGroupbox("娱乐")
+local BlacklistGroup = Tabs.Management:AddRightGroupbox("黑名单管理")
+local blacklistDataOption = BlacklistGroup:AddInput("BlacklistData", { Text = "Blacklist Internal Data", Default = "[]" })
+blacklistDataOption.Visible = false
+local function updateBlacklistData()
+    local jsonString = HttpService:JSONEncode(SilentAimSettings.BlacklistedNames)
+    blacklistDataOption:SetValue(jsonString)
+end
+BlacklistGroup:AddInput("BlacklistNameInput", { Text = "名称", PlaceholderText = "输入要拉黑的精确名称" })
+BlacklistGroup:AddButton("添加到黑名单", function()
+    local name = Options.BlacklistNameInput.Value
+    if name and name ~= "" and not isBlacklisted(name) then
+        table.insert(SilentAimSettings.BlacklistedNames, name)
+        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
+        Options.BlacklistNameInput:SetValue("")
+        updateBlacklistData()
+    end
+end)
+BlacklistGroup:AddDropdown("BlacklistDropdown", { Text = "黑名单列表", Values = SilentAimSettings.BlacklistedNames or {} })
+BlacklistGroup:AddButton("从黑名单中删除", function()
+    local selectedName = Options.BlacklistDropdown.Value
+    if selectedName then
+        for i, name in ipairs(SilentAimSettings.BlacklistedNames) do
+            if name == selectedName then
+                table.remove(SilentAimSettings.BlacklistedNames, i)
+                break
+            end
+        end
+        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
+        updateBlacklistData()
+    end
+end)
+blacklistDataOption:OnChanged(function(jsonString)
+    if not jsonString or jsonString == "" then jsonString = "[]" end
+    local success, decoded = pcall(HttpService.JSONDecode, HttpService, jsonString)
+    if success and type(decoded) == 'table' then
+        SilentAimSettings.BlacklistedNames = decoded
+        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
+    end
+end)
+
+local CharacterModGroup = Tabs.Misc:AddLeftGroupbox("角色修改")
+local originalCharacterData = {}
+local transparencyLoopConnection = nil
+local function restoreCharacterAppearance()
+    for part, data in pairs(originalCharacterData) do
+        if part and part.Parent then
+            part.Material = data.material
+            part.Color = data.color
+            part.Transparency = data.transparency
+        end
+    end
+    originalCharacterData = {}
+end
+local function transparencyLoop()
+    if not LocalPlayer.Character then
+        if next(originalCharacterData) then
+            originalCharacterData = {}
+        end
+        return
+    end
+    local isRainbowEnabled = Toggles.TransparentCharacterRainbow.Value
+    for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if not originalCharacterData[part] then
+                originalCharacterData[part] = {
+                    material = part.Material,
+                    color = part.Color,
+                    transparency = part.Transparency
+                }
+            end
+            part.Material = Enum.Material.ForceField
+            if isRainbowEnabled then
+                part.Color = rainbowColor
+            else
+                part.Color = originalCharacterData[part].color
+            end
+        end
+    end
+end
+CharacterModGroup:AddToggle("TransparentCharacterEnabled", { Text = "人物透明", Default = false }):OnChanged(function(value)
+    if value then
+        transparencyLoopConnection = RunService.Heartbeat:Connect(transparencyLoop)
+    else
+        if transparencyLoopConnection then
+            transparencyLoopConnection:Disconnect()
+            transparencyLoopConnection = nil
+        end
+        restoreCharacterAppearance()
+    end
+end)
+CharacterModGroup:AddToggle("TransparentCharacterRainbow", { Text = "人物变色", Default = false }):OnChanged(function(value)
+    if not value and Toggles.TransparentCharacterEnabled.Value then
+        restoreCharacterAppearance()
+        task.wait()
+        transparencyLoop()
+    end
+end)
+
+local EntertainmentGroup = Tabs.Misc:AddLeftGroupbox("娱乐")
 local spinThread = nil
 local spinEnabled = false
 local spinSpeed = math.rad(10)
@@ -672,53 +703,6 @@ end)
 EntertainmentGroup:AddSlider("SpinSpeedSlider", { Text = "旋转速度", Default = 10, Min = 1, Max = 100, Rounding = 0 }):OnChanged(function(value)
     spinSpeed = math.rad(value)
 end)
-
-local BlacklistGroup = Tabs.Misc:AddRightGroupbox("黑名单管理")
-local blacklistDataOption = BlacklistGroup:AddInput("BlacklistData", {
-    Text = "Blacklist Internal Data",
-    Default = "[]" 
-})
-blacklistDataOption.Visible = false 
-local function updateBlacklistData()
-    local jsonString = HttpService:JSONEncode(SilentAimSettings.BlacklistedNames)
-    blacklistDataOption:SetValue(jsonString)
-end
-
-BlacklistGroup:AddInput("BlacklistNameInput", { Text = "名称", PlaceholderText = "输入要拉黑的精确名称" })
-BlacklistGroup:AddButton("添加到黑名单", function()
-    local name = Options.BlacklistNameInput.Value
-    if name and name ~= "" and not isBlacklisted(name) then
-        table.insert(SilentAimSettings.BlacklistedNames, name)
-        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
-        Options.BlacklistNameInput:SetValue("")
-        updateBlacklistData() 
-    end
-end)
-
-BlacklistGroup:AddDropdown("BlacklistDropdown", { Text = "黑名单列表", Values = SilentAimSettings.BlacklistedNames or {} })
-BlacklistGroup:AddButton("从黑名单中删除", function()
-    local selectedName = Options.BlacklistDropdown.Value
-    if selectedName then
-        for i, name in ipairs(SilentAimSettings.BlacklistedNames) do
-            if name == selectedName then
-                table.remove(SilentAimSettings.BlacklistedNames, i)
-                break
-            end
-        end
-        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
-        updateBlacklistData() 
-    end
-end)
-
-blacklistDataOption:OnChanged(function(jsonString)
-    if not jsonString or jsonString == "" then jsonString = "[]" end
-    local success, decoded = pcall(HttpService.JSONDecode, HttpService, jsonString)
-    if success and type(decoded) == 'table' then
-        SilentAimSettings.BlacklistedNames = decoded
-        Options.BlacklistDropdown:SetValues(SilentAimSettings.BlacklistedNames)
-    end
-end)
-
 
 FOVCircleGui.Enabled = Toggles.FOVVisibleToggle.Value
 FOVStroke.Color = Options.FOVColorPicker.Value
@@ -768,7 +752,7 @@ resume(create(function()
                         currentTargetCharacter = lockedTargetObject
                     end
                 else
-                    lockedTargetObject = nil 
+                    lockedTargetObject = nil
                     Options.TargetSelectorDropdown:SetValue("无")
                 end
             else
@@ -795,7 +779,7 @@ resume(create(function()
         end
 
         if currentTargetCharacter ~= lastTargetCharacter then
-            lockedRandomPart = nil 
+            lockedRandomPart = nil
         end
         lastTargetCharacter = currentTargetCharacter
 
@@ -882,15 +866,15 @@ resume(create(function()
                 if SilentAimSettings.ShowDamageNotifier and data.damage > 0 then
                     local screenPos, onScreen = getPositionOnScreen(data.position)
                     if onScreen then
-                        local indicator = {}; 
-                        indicator.Created = tick(); 
+                        local indicator = {};
+                        indicator.Created = tick();
                         indicator.Position = screenPos;
                         indicator.TextObject = Drawing.new("Text")
-                        indicator.TextObject.Font = Drawing.Fonts.Monospace; 
+                        indicator.TextObject.Font = Drawing.Fonts.Monospace;
                         indicator.TextObject.Text = string.format("-%d", data.damage)
-                        indicator.TextObject.Color = Color3.fromRGB(255, 50, 50); 
+                        indicator.TextObject.Color = Color3.fromRGB(255, 50, 50);
                         indicator.TextObject.Size = 20
-                        indicator.TextObject.Center = true; 
+                        indicator.TextObject.Center = true;
                         indicator.TextObject.Outline = true
                         table.insert(damageIndicators, indicator)
                     end
@@ -898,7 +882,6 @@ resume(create(function()
                 pendingDamage[humanoid] = nil
             end
         end
-
 
         for i = #damageIndicators, 1, -1 do
             local indicator = damageIndicators[i]; local age = tick() - indicator.Created
@@ -1040,6 +1023,18 @@ resume(create(function()
                 independent_panel_texts.Health.Text = "目标: 无"
             end
         end
+
+        if Toggles.ShowTracerToggle.Value and isEnabled and currentTargetPart then
+            local targetHead = currentTargetCharacter and currentTargetCharacter:FindFirstChild("Head")
+            local tracerTargetPosition = (targetHead and targetHead.Position) or currentTargetPart.Position
+            local y_offset = SilentAimSettings.Tracer_Y_Offset
+            local finalTracerPosition = tracerTargetPosition - Vector3.new(0, y_offset, 0)
+            local targetScreenPos, IsOnScreen = getPositionOnScreen(finalTracerPosition)
+            tracer_line.Visible = IsOnScreen
+            if IsOnScreen then tracer_line.From = Camera.ViewportSize / 2; tracer_line.To = targetScreenPos; tracer_line.Color = Options.TracerColorPicker.Value end
+        else
+            tracer_line.Visible = false
+        end
         
         if Toggles.FOVVisibleToggle.Value then
             if Toggles.FixedFOVToggle.Value then FOVCircleFrame.Position = UDim2.fromScale(0.5, 0.5) else local mousePos = GetMouseLocation(UserInputService); FOVCircleFrame.Position = UDim2.fromOffset(mousePos.X, mousePos.Y) end
@@ -1056,8 +1051,8 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
         local currentMethod = SilentAimSettings.SilentAimMethod
         local shotOrigin = nil
 
-        if (Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method) or 
-           (Method == "FindPartOnRayWithWhitelist" and currentMethod == Method) or 
+        if (Method == "FindPartOnRayWithIgnoreList" and currentMethod == Method) or
+           (Method == "FindPartOnRayWithWhitelist" and currentMethod == Method) or
            ((Method == "FindPartOnRay" or Method == "findPartOnRay") and currentMethod:lower() == Method:lower()) then
             
             if ValidateArguments(Arguments, ExpectedArguments[Method] or ExpectedArguments["FindPartOnRay"]) then
