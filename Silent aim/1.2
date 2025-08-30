@@ -24,6 +24,7 @@ local SilentAimSettings = {
     MouseHitPrediction = false,
     MouseHitPredictionAmount = 0.165,
     HitChance = 100,
+    HeadshotChanceEnabled = false,
     HeadshotChance = 0,
     FixedFOV = true,
     TargetIndicatorRadius = 20,
@@ -412,7 +413,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options = Library.Options
 local Toggles = Library.Toggles
 
-local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.4 修复版", Center = true, AutoShow = true })
+local Window = Library:CreateWindow({ Title = "Universal Silent Aim", Footer = "1.2", Center = true, AutoShow = true })
 
 local Tabs = {
     Main = Window:AddTab("主页", "user"),
@@ -431,6 +432,9 @@ MainGroupBox:AddDropdown("TargetModeDropdown", { Text = "目标种类", Default 
 MainGroupBox:AddDropdown("TargetPartDropdown", { Values = {"Head", "HumanoidRootPart", "Random"}, Default = SilentAimSettings.TargetPart, Text = "目标部位" }):OnChanged(function(Value) SilentAimSettings.TargetPart = Value end)
 MainGroupBox:AddDropdown("MethodDropdown", { Text = "静默瞄准方式", Default = SilentAimSettings.SilentAimMethod, Values = { "Raycast","FindPartOnRay", "FindPartOnRayWithWhitelist", "FindPartOnRayWithIgnoreList", "ScreenPointToRay", "ViewportPointToRay", "Ray", "Mouse.Hit/Target" } }):OnChanged(function(Value) SilentAimSettings.SilentAimMethod = Value end)
 MainGroupBox:AddSlider('HitChanceSlider', { Text = '命中率', Default = SilentAimSettings.HitChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HitChance = Value end)
+
+MainGroupBox:AddToggle("HeadshotChanceToggle", { Text = "启用爆头几率", Default = SilentAimSettings.HeadshotChanceEnabled }):OnChanged(function(Value) SilentAimSettings.HeadshotChanceEnabled = Value end)
+
 MainGroupBox:AddSlider('HeadshotChanceSlider', { Text = '爆头概率', Default = SilentAimSettings.HeadshotChance, Min = 0, Max = 100, Rounding = 1, Suffix = "%" }):OnChanged(function(Value) SilentAimSettings.HeadshotChance = Value end)
 MainGroupBox:AddSlider('MaxDistanceSlider', { Text = '最大距离', Default = SilentAimSettings.MaxDistance, Min = 10, Max = 2000, Rounding = 0, Suffix = "studs" }):OnChanged(function(Value) SilentAimSettings.MaxDistance = Value end)
 
@@ -828,7 +832,7 @@ resume(create(function()
                 end
 
                 if baseTargetPart then
-                    if CalculateChance(SilentAimSettings.HeadshotChance) then
+                    if SilentAimSettings.HeadshotChanceEnabled and CalculateChance(SilentAimSettings.HeadshotChance) then
                         local headPart = currentTargetCharacter:FindFirstChild("Head")
                         if headPart then
                             currentTargetPart = headPart
@@ -1058,17 +1062,18 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
             
             if ValidateArguments(Arguments, ExpectedArguments[Method] or ExpectedArguments["FindPartOnRay"]) then
                 shotOrigin = Arguments[2].Origin
+                table.insert(recentShots, {origin = shotOrigin, time = tick()})
                 if SilentAimSettings.Wallbang then
-                    table.insert(recentShots, {origin = shotOrigin, time = tick()})
                     return currentTargetPart, currentTargetPart.Position, currentTargetPart.CFrame.LookVector, currentTargetPart.Material
                 end
                 Arguments[2] = Ray.new(Arguments[2].Origin, getDirection(Arguments[2].Origin, currentTargetPart.Position))
+                return oldNamecall(unpack(Arguments))
             end
         elseif Method == "Raycast" and currentMethod == Method then
             if ValidateArguments(Arguments, ExpectedArguments.Raycast) then
                 shotOrigin = Arguments[2]
+                table.insert(recentShots, {origin = shotOrigin, time = tick()})
                 if SilentAimSettings.Wallbang then
-                    table.insert(recentShots, {origin = shotOrigin, time = tick()})
                     local direction = getDirection(shotOrigin, currentTargetPart.Position)
                     local wallbangParams = RaycastParams.new()
                     wallbangParams.FilterType = Enum.RaycastFilterType.Include
@@ -1077,16 +1082,13 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
                     return oldNamecall(unpack(newArgs))
                 end
                 Arguments[3] = getDirection(Arguments[2], currentTargetPart.Position)
+                return oldNamecall(unpack(Arguments))
             end
         elseif (Method == "ScreenPointToRay" or Method == "ViewportPointToRay") and currentMethod == Method and self == Camera then
             shotOrigin = Camera.CFrame.Position
             local direction = (currentTargetPart.Position - shotOrigin).Unit
             table.insert(recentShots, {origin = shotOrigin, time = tick()})
             return Ray.new(shotOrigin, direction)
-        end
-        
-        if shotOrigin then
-            table.insert(recentShots, {origin = shotOrigin, time = tick()})
         end
     end
     return oldNamecall(...)
